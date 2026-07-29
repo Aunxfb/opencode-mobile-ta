@@ -16,6 +16,8 @@ interface Props {
   onLoadAll: () => void
   onScrollToTop: () => void
   onClose: () => void
+  onRename?: () => void
+  onCompact?: () => void
 }
 
 function compact(n: number): string {
@@ -51,6 +53,8 @@ export function SessionInfo({
   onLoadAll,
   onScrollToTop,
   onClose,
+  onRename,
+  onCompact,
 }: Props) {
   const { t } = useTranslation()
   // Match TUI: last assistant message tokens (context window), cumulative cost
@@ -179,6 +183,18 @@ export function SessionInfo({
 
       {/* Navigation actions */}
       <View style={s.actions}>
+        {onRename && (
+          <TouchableOpacity style={[s.action, isDark && s.actionDark]} onPress={onRename}>
+            <Ionicons name="create-outline" size={14} color={isDark ? "#888888" : "#666666"} />
+            <Text style={[s.actionText, isDark && s.dimDark]}>{t("session.actions.rename")}</Text>
+          </TouchableOpacity>
+        )}
+        {onCompact && (
+          <TouchableOpacity style={[s.action, isDark && s.actionDark]} onPress={onCompact}>
+            <Ionicons name="compress-outline" size={14} color={isDark ? "#888888" : "#666666"} />
+            <Text style={[s.actionText, isDark && s.dimDark]}>{t("session.actions.compact")}</Text>
+          </TouchableOpacity>
+        )}
         {hasMore && (
           <TouchableOpacity style={[s.action, isDark && s.actionDark]} onPress={onLoadAll} disabled={loadingAll}>
             {loadingAll ? (

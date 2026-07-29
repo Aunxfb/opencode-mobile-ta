@@ -27,6 +27,7 @@ interface EventsState {
   lastDisconnectAt: number | null
   sessionStatus: Record<string, SessionStatus>
   statusText: Record<string, string>
+  lastActivityAt: Record<string, number>
   // Permissions & questions (pending per session)
   permissions: Record<
     string,
@@ -61,16 +62,21 @@ interface EventsState {
 
 let controller: AbortController | null = null
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null
+let watchdogTimer: ReturnType<typeof setInterval> | null = null
 
 // Sessions that emitted session.error since they last went busy. SessionStatus
 // has no error variant — an errored session still ends with a busy -> idle
 // transition — so without this mark an errored run would count as a success
 // toward the once-ever store review prompt.
 const erroredSessions = new Set<string>()
+const staleClearedSessions = new Set<string>()
 
 const RECONNECT_DELAYS_MS = [1000, 2000, 4000, 8000, 15000] as const
 const STABLE_CONNECTION_MS = 10_000
 const PROLONGED_DISCONNECT_MS = 30_000
+const BUSY_WATCHDOG_INTERVAL_MS = 30_000
+const STALE_WARNING_MS = 300_000
+const STALE_AUTO_CLEAR_MS = 600_000
 
 // Re-fetch pending permissions and questions from the server for a session.
 // Called when entering a session to recover from missed SSE events or failed
@@ -145,6 +151,102 @@ async function resyncBusySessions() {
   )
 }
 
+// Track that activity was just observed for a session (updates lastActivityAt).
+function updateActivity(sessionID: string) {
+  useEvents.setState((state) => ({
+    lastActivityAt: { ...state.lastActivityAt, [sessionID]: Date.now() },
+  }))
+}
+
+// Public: resync a single session against the server. Can be called from UI
+// (manual "force refresh" in StatusIndicator) when the user suspects a stuck
+// session. Same logic as resyncBusySessions but scoped to one sessionID.
+export async function resyncSessionStatus(sessionID: string) {
+  try {
+    const sessionsState = useSessions.getState()
+    const session =
+      sessionsState.sessions.find((s) => s.id === sessionID) ??
+      (sessionsState.currentSession?.id === sessionID ? sessionsState.currentSession : undefined)
+    const connState = useConnections.getState()
+    const client = session?.directory
+      ? connState.clientForDirectory(session.directory) ?? connState.client
+      : connState.client
+    if (!client) return
+
+    const response = await client.session.messages(sessionID)
+    const messages = (response || []).map((m) => m.info)
+    if (!isSessionActuallyIdle(messages)) return
+
+    if (useEvents.getState().sessionStatus[sessionID]?.type !== "busy") return
+
+    useEvents.setState((state) => ({
+      sessionStatus: { ...state.sessionStatus, [sessionID]: { type: "idle" } },
+      statusText: { ...state.statusText, [sessionID]: "" },
+    }))
+    useSessions.setState((state) => ({ sending: { ...state.sending, [sessionID]: false } }))
+    if (useSessions.getState().currentSession?.id === sessionID) {
+      useSessions.getState().refreshMessages()
+    }
+  } catch (err) {
+    console.warn("[Events] Failed to resync session status for", sessionID, err)
+  }
+}
+
+// Auto-clear busy sessions that have been silent for too long (>10 min).
+function clearStaleBusySessions() {
+  const state = useEvents.getState()
+  const now = Date.now()
+
+  for (const [sessionID, status] of Object.entries(state.sessionStatus)) {
+    if (status.type !== "busy") continue
+    const lastActivity = state.lastActivityAt[sessionID] ?? 0
+    const silentFor = now - lastActivity
+    if (silentFor < STALE_AUTO_CLEAR_MS) continue
+
+    console.warn(`[Events] Auto-clearing stale busy session ${sessionID} (silent for ${silentFor}ms)`)
+    staleClearedSessions.add(sessionID)
+
+    useEvents.setState((state) => ({
+      sessionStatus: { ...state.sessionStatus, [sessionID]: { type: "idle" } },
+      statusText: { ...state.statusText, [sessionID]: "" },
+    }))
+    useSessions.setState((state) => ({
+      sending: { ...state.sending, [sessionID]: false },
+      ...(state.currentSession?.id === sessionID
+        ? { error: "Task appears stuck — processing timed out. Please try again." }
+        : {}),
+    }))
+    if (useSessions.getState().currentSession?.id === sessionID) {
+      useSessions.getState().refreshMessages()
+    }
+    notify({
+      category: "errors",
+      title: "Task timed out",
+      body: sanitizeBody(undefined, "The session stopped responding. Please check the server and try again."),
+      sessionId: sessionID,
+    })
+  }
+}
+
+function startWatchdog() {
+  if (watchdogTimer) return
+  watchdogTimer = setInterval(() => {
+    const state = useEvents.getState()
+    const hasBusy = Object.values(state.sessionStatus).some((s) => s.type === "busy")
+    if (!hasBusy) return
+
+    clearStaleBusySessions()
+    void resyncBusySessions()
+  }, BUSY_WATCHDOG_INTERVAL_MS)
+}
+
+function stopWatchdog() {
+  if (watchdogTimer) {
+    clearInterval(watchdogTimer)
+    watchdogTimer = null
+  }
+}
+
 export const useEvents = create<EventsState>((set, get) => ({
   connected: false,
   authError: false,
@@ -152,6 +254,7 @@ export const useEvents = create<EventsState>((set, get) => ({
   lastDisconnectAt: null,
   sessionStatus: {},
   statusText: {},
+  lastActivityAt: {},
   permissions: {},
   questions: {},
 
@@ -169,6 +272,7 @@ export const useEvents = create<EventsState>((set, get) => ({
     controller = new AbortController()
     const currentController = controller
     set({ connected: true, authError: false })
+    startWatchdog()
     console.log("[SSE] Connecting to event stream...")
     addBreadcrumb({ category: "sse", message: "connecting" })
 
@@ -243,6 +347,7 @@ export const useEvents = create<EventsState>((set, get) => ({
               const sessionID = props.sessionID as string
               const status = props.status as SessionStatus
               if (!sessionID) break
+              updateActivity(sessionID)
 
               // Detect busy → idle transition for completion notification
               const previous = get().sessionStatus[sessionID]
@@ -252,6 +357,7 @@ export const useEvents = create<EventsState>((set, get) => ({
               if (status.type === "busy") {
                 erroredSessions.delete(sessionID)
                 abortedSessions.delete(sessionID)
+                staleClearedSessions.delete(sessionID)
               }
 
               set((state) => ({
@@ -304,6 +410,7 @@ export const useEvents = create<EventsState>((set, get) => ({
             case "message.updated": {
               const info = props.info as Message | undefined
               if (!info) break
+              if (info.sessionID) updateActivity(info.sessionID)
               useSessions.getState().handleEvent({ type, properties: { info } } as any)
               break
             }
@@ -315,12 +422,44 @@ export const useEvents = create<EventsState>((set, get) => ({
               // Update status text from the latest part
               const sessionID = (part as any).sessionID as string
               if (sessionID) {
+                updateActivity(sessionID)
                 set((state) => ({
                   statusText: { ...state.statusText, [sessionID]: statusFromPart(part) },
                 }))
               }
 
               useSessions.getState().handleEvent({ type, properties: { part } } as any)
+              break
+            }
+
+            case "message.part.delta": {
+              const sessionID = props.sessionID as string
+              const messageID = props.messageID as string
+              const partID = props.partID as string
+              const field = props.field as string
+              const delta = props.delta as string
+              if (!sessionID || !messageID || !partID || !field || !delta) break
+
+              updateActivity(sessionID)
+
+              if (field === "text") {
+                const sessionsState = useSessions.getState()
+                const messageParts = sessionsState.parts[messageID]
+                if (!messageParts) break
+
+                const idx = messageParts.findIndex((p) => p.id === partID)
+                if (idx === -1) break
+
+                const oldPart = messageParts[idx]
+                const newPart = { ...oldPart, text: (oldPart.text || "") + delta }
+                const newParts = messageParts.slice()
+                newParts[idx] = newPart
+
+                useSessions.setState((state) => ({
+                  parts: { ...state.parts, [messageID]: newParts },
+                  isLoading: false,
+                }))
+              }
               break
             }
 
@@ -347,6 +486,7 @@ export const useEvents = create<EventsState>((set, get) => ({
               const error = props.error as { message?: string } | undefined
               const sessionID = props.sessionID as string
               if (!sessionID) break
+              updateActivity(sessionID)
               // Mark so the eventual busy -> idle transition is not counted
               // as a success for the store review prompt
               erroredSessions.add(sessionID)
@@ -482,6 +622,7 @@ export const useEvents = create<EventsState>((set, get) => ({
   disconnect: () => {
     console.log("[SSE] Disconnecting")
     addBreadcrumb({ category: "sse", message: "disconnected" })
+    stopWatchdog()
     if (reconnectTimer) {
       clearTimeout(reconnectTimer)
       reconnectTimer = null
@@ -490,6 +631,7 @@ export const useEvents = create<EventsState>((set, get) => ({
     controller = null
     erroredSessions.clear()
     abortedSessions.clear()
+    staleClearedSessions.clear()
     set({
       connected: false,
       authError: false,
@@ -497,6 +639,7 @@ export const useEvents = create<EventsState>((set, get) => ({
       lastDisconnectAt: null,
       sessionStatus: {},
       statusText: {},
+      lastActivityAt: {},
       permissions: {},
       questions: {},
     })

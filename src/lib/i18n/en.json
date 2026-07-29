@@ -95,6 +95,11 @@
     },
     "actions": {
       "editMessage": "Edit message",
+      "regenerate": "Regenerate",
+      "copyMessage": "Copy message",
+      "fork": "Fork from here",
+      "rename": "Rename",
+      "compact": "Compact",
       "replace": "Replace"
     },
     "alerts": {
@@ -113,6 +118,8 @@
       "emptyClipboardMessage": "Clipboard does not contain text or an image.",
       "authRequiredTitle": "Authentication required",
       "authRequiredMessage": "Biometric authentication is required to send. Please try again.",
+      "deleteConfirmTitle": "Delete message?",
+      "deleteConfirmMessage": "This will permanently remove this message and cannot be undone.",
       "sendFailedTitle": "Message not sent",
       "sendFailedMessage": "Could not send your message. Check your connection and try again.",
       "replyFailedTitle": "Reply Failed",
@@ -122,7 +129,9 @@
       "imageFailedTitle": "Image not attached",
       "imageFailedMessage": "One or more images could not be processed. Please try a different photo.",
       "speechErrorTitle": "Voice input failed",
-      "speechErrorMessage": "Could not use voice input. Check your microphone permission and try again."
+      "speechErrorMessage": "Could not use voice input. Check your microphone permission and try again.",
+      "compactStartedTitle": "Summarization started",
+      "compactStartedMessage": "The session is being compacted. This may take a moment."
     }
   },
   "connection": {
@@ -360,7 +369,8 @@
     },
     "statusIndicator": {
       "retrying": "Retrying (attempt {{attempt}})...",
-      "working": "Working..."
+      "working": "Working...",
+      "stale": " · Still working..."
     },
     "slashPopover": {
       "customBadge": "cmd"

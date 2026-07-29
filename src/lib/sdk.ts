@@ -448,6 +448,21 @@ export function createClient(config: ClientConfig) {
 
       abort: (sessionID: string) => request<boolean>(config, `/session/${sessionID}/abort`, { method: "POST" }),
 
+      deleteMessage: (sessionID: string, messageID: string) =>
+        request<void>(config, `/session/${sessionID}/message/${messageID}`, { method: "DELETE" }),
+
+      fork: (sessionID: string, messageID?: string) =>
+        request<Session>(config, `/session/${sessionID}/fork`, {
+          method: "POST",
+          body: JSON.stringify(messageID ? { messageID } : {}),
+        }),
+
+      summarize: (sessionID: string, params: { providerID: string; modelID: string; auto?: boolean }) =>
+        request<boolean>(config, `/session/${sessionID}/summarize`, {
+          method: "POST",
+          body: JSON.stringify(params),
+        }),
+
       diff: (sessionID: string, messageID?: string) => {
         const qs = messageID ? `?messageID=${messageID}` : ""
         return request<unknown[]>(config, `/session/${sessionID}/diff${qs}`)

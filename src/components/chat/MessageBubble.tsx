@@ -37,9 +37,9 @@ export const MessageBubble = memo(
 
     return (
       <TouchableOpacity
-        activeOpacity={isUser && onLongPress ? 0.7 : 1}
-        onLongPress={isUser && onLongPress ? () => onLongPress(message.id) : undefined}
-        disabled={!isUser || !onLongPress}
+        activeOpacity={onLongPress ? 0.7 : 1}
+        onLongPress={onLongPress ? () => onLongPress(message.id) : undefined}
+        disabled={!onLongPress}
         style={[
           s.bubble,
           isUser ? s.user : s.assistant,

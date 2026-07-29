@@ -49,7 +49,7 @@ function BashDetail({ input, output, isDark }: { input: unknown; output: unknown
       )}
       {out !== undefined && out.length > 0 && (
         <View style={[s.codeBlock, isDark && s.codeBlockDark, { marginTop: 6 }]}>
-          <Text style={[s.codePre, isDark && s.codePteDark]} selectable numberOfLines={80}>
+          <Text style={[s.codePre, isDark && s.codePteDark]} selectable>
             {out}
           </Text>
         </View>
@@ -87,7 +87,7 @@ function WriteDetail({ input, isDark }: { input: unknown; isDark: boolean }) {
       )}
       {typeof content === "string" && content.length > 0 && (
         <View style={[s.codeBlock, isDark && s.codeBlockDark, { marginTop: 6 }]}>
-          <Text style={[s.codePre, isDark && s.codePteDark]} selectable numberOfLines={40}>
+          <Text style={[s.codePre, isDark && s.codePteDark]} selectable>
             {content}
           </Text>
         </View>
@@ -127,7 +127,7 @@ function EditDetail({ input, output, isDark }: { input: unknown; output: unknown
       )}
       {text && (
         <View style={[s.codeBlock, isDark && s.codeBlockDark, { marginTop: 6 }]}>
-          <Text style={[s.codePre, isDark && s.codePteDark]} selectable numberOfLines={40}>
+          <Text style={[s.codePre, isDark && s.codePteDark]} selectable>
             {text}
           </Text>
         </View>
@@ -142,7 +142,7 @@ function PatchDetail({ input, isDark }: { input: unknown; isDark: boolean }) {
     <View style={s.detailSection}>
       {typeof patch === "string" && patch.length > 0 && (
         <View style={[s.codeBlock, isDark && s.codeBlockDark]}>
-          <Text style={[s.codePre, isDark && s.codePteDark]} selectable numberOfLines={60}>
+          <Text style={[s.codePre, isDark && s.codePteDark]} selectable>
             {patch}
           </Text>
         </View>
@@ -167,7 +167,7 @@ function GlobGrepDetail({ input, output, isDark }: { input: unknown; output: unk
       )}
       {results && results.length > 0 && (
         <View style={[s.codeBlock, isDark && s.codeBlockDark, { marginTop: 6 }]}>
-          <Text style={[s.codePre, isDark && s.codePteDark]} selectable numberOfLines={30}>
+          <Text style={[s.codePre, isDark && s.codePteDark]} selectable>
             {results}
           </Text>
         </View>
@@ -198,7 +198,7 @@ function TaskDetail({ input, isDark }: { input: unknown; isDark: boolean }) {
       {typeof description === "string" && <Text style={[s.detailMeta, isDark && s.detailMetaDark]}>{description}</Text>}
       {typeof prompt === "string" && prompt.length > 0 && (
         <View style={[s.codeBlock, isDark && s.codeBlockDark, { marginTop: 6 }]}>
-          <Text style={[s.codePre, isDark && s.codePteDark]} selectable numberOfLines={20}>
+          <Text style={[s.codePre, isDark && s.codePteDark]} selectable>
             {prompt}
           </Text>
         </View>
@@ -245,7 +245,7 @@ function GenericDetail({ input, output, isDark }: { input: unknown; output: unkn
   return (
     <View style={s.detailSection}>
       <View style={[s.codeBlock, isDark && s.codeBlockDark]}>
-        <Text style={[s.codePre, isDark && s.codePteDark]} selectable numberOfLines={30}>
+        <Text style={[s.codePre, isDark && s.codePteDark]} selectable>
           {text}
         </Text>
       </View>
@@ -291,7 +291,7 @@ function ErrorBanner({ message, isDark }: { message: string; isDark: boolean }) 
   return (
     <View style={[s.errorBanner, isDark && s.errorBannerDark]}>
       <Ionicons name="alert-circle" size={14} color="#ef4444" />
-      <Text style={s.errorText} numberOfLines={3} selectable>
+      <Text style={s.errorText} selectable>
         {message}
       </Text>
     </View>

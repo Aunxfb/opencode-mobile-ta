@@ -1,5 +1,5 @@
 import { useState } from "react"
-import { View, Text, TouchableOpacity, StyleSheet } from "react-native"
+import { View, Text, TouchableOpacity, StyleSheet, ScrollView } from "react-native"
 import { Ionicons } from "@expo/vector-icons"
 import { useTranslation } from "react-i18next"
 
@@ -24,9 +24,11 @@ export function ReasoningBlock({ text, isDark }: Props) {
         <Ionicons name={expanded ? "chevron-up" : "chevron-down"} size={14} color={isDark ? "#666666" : "#999999"} />
       </View>
       {expanded && (
-        <Text style={[s.text, isDark && s.textDark]} selectable>
-          {text}
-        </Text>
+        <ScrollView style={s.scrollWrap} nestedScrollEnabled showsVerticalScrollIndicator={false}>
+          <Text style={[s.text, isDark && s.textDark]} selectable>
+            {text}
+          </Text>
+        </ScrollView>
       )}
     </TouchableOpacity>
   )
@@ -45,6 +47,7 @@ const s = StyleSheet.create({
   header: { flexDirection: "row", alignItems: "center", gap: 6 },
   label: { fontSize: 12, fontWeight: "600", color: "#92400e", flex: 1 },
   labelDark: { color: "#f59e0b" },
-  text: { fontSize: 13, lineHeight: 20, color: "#78350f", marginTop: 8 },
+  scrollWrap: { maxHeight: 300, marginTop: 8 },
+  text: { fontSize: 13, lineHeight: 20, color: "#78350f" },
   textDark: { color: "#d4a574" },
 })

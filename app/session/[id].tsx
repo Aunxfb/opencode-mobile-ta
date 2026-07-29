@@ -11,6 +11,7 @@ import {
   Platform,
   ActivityIndicator,
   Alert,
+  Modal,
 } from "react-native"
 import { useLocalSearchParams, Stack, useRouter, useFocusEffect } from "expo-router"
 import { Ionicons } from "@expo/vector-icons"
@@ -22,6 +23,7 @@ import * as Clipboard from "expo-clipboard"
 import type BottomSheet from "@gorhom/bottom-sheet"
 import {
   MessageBubble,
+  MessageActions,
   PermissionPrompt,
   QuestionPrompt,
   StatusIndicator,
@@ -82,9 +84,14 @@ export default function SessionScreen() {
   const flatListRef = useRef<FlatList>(null)
   const modelSheetRef = useRef<BottomSheet>(null)
   const variantSheetRef = useRef<BottomSheet>(null)
+  const actionSheetRef = useRef<BottomSheet>(null)
   const [input, setInput] = useState("")
   const [attachments, setAttachments] = useState<Attachment[]>([])
   const [showInfo, setShowInfo] = useState(false)
+  const [actionMessage, setActionMessage] = useState<{ id: string; role: "user" | "assistant"; text: string } | null>(null)
+  const actionMessageRef = useRef<{ id: string; role: "user" | "assistant"; text: string } | null>(null)
+  const [renameVisible, setRenameVisible] = useState(false)
+  const [renameText, setRenameText] = useState("")
 
   const {
     currentSession,
@@ -99,6 +106,11 @@ export default function SessionScreen() {
     loadOlderMessages,
     revertToMessage,
     unrevertSession,
+    deleteMessage,
+    regenerateMessage,
+    forkSession,
+    renameSession,
+    summarizeSession,
   } = useSessions()
 
   // Derive sending state for this specific session
@@ -218,38 +230,115 @@ export default function SessionScreen() {
     )
   }, [t])
 
-  // Stable across renders (reads fresh state via getState() rather than
-  // closing over props) so MessageBubble's custom memo comparator can bail
-  // safely without risking a stale handler.
+  // Opens the message action sheet on long-press (both user and assistant messages).
   const handleMessageLongPress = useCallback((messageID: string) => {
-    Alert.alert(t("session.alerts.messageActionsTitle"), undefined, [
-      { text: t("common.cancel"), style: "cancel" },
-      {
-        text: t("session.actions.editMessage"),
-        onPress: () => {
-          const doRevert = async () => {
-            const result = await useSessions.getState().revertToMessage(messageID)
-            applyRevertResult(result)
-          }
-          // Editing overwrites the composer — don't silently clobber an
-          // in-progress unsent draft.
-          if (inputRef.current.trim()) {
-            Alert.alert(
-              t("session.alerts.replaceDraftTitle"),
-              t("session.alerts.replaceDraftMessage"),
-              [
-                { text: t("common.cancel"), style: "cancel" },
-                { text: t("session.actions.replace"), style: "destructive", onPress: doRevert },
-              ],
-              { cancelable: false },
-            )
-            return
-          }
-          doRevert()
-        },
-      },
-    ])
-  }, [applyRevertResult, t])
+    const { messages: msgs, parts: pts } = useSessions.getState()
+    const msg = msgs.find((m) => m.id === messageID)
+    if (!msg) return
+    const msgParts = (pts[messageID] || []).filter((p) => p.type === "text")
+    const text = msgParts.map((p) => p.text).join("\n")
+    const entry = { id: messageID, role: msg.role, text }
+    actionMessageRef.current = entry
+    setActionMessage(entry)
+    actionSheetRef.current?.expand()
+  }, [])
+
+  const handleMessageAction = useCallback(
+    (action: string) => {
+      const msg = actionMessageRef.current
+      if (!msg) return
+
+      if (action === "copy") {
+        Clipboard.setStringAsync(msg.text)
+        setActionMessage(null)
+        actionMessageRef.current = null
+        return
+      }
+
+      if (action === "delete") {
+        Alert.alert(
+          t("session.alerts.deleteConfirmTitle"),
+          t("session.alerts.deleteConfirmMessage"),
+          [
+            { text: t("common.cancel"), style: "cancel" },
+            {
+              text: t("common.delete"),
+              style: "destructive",
+              onPress: () => {
+                deleteMessage(msg.id)
+                setActionMessage(null)
+                actionMessageRef.current = null
+              },
+            },
+          ],
+        )
+        return
+      }
+
+      if (action === "fork") {
+        const doFork = async () => {
+          const created = await useSessions.getState().forkSession(msg.id)
+          setActionMessage(null)
+          actionMessageRef.current = null
+          if (created) router.push(`/session/${created.id}`)
+        }
+        doFork()
+        return
+      }
+
+      if (action === "edit") {
+        const doRevert = async () => {
+          const result = await useSessions.getState().revertToMessage(msg.id)
+          setActionMessage(null)
+          actionMessageRef.current = null
+          applyRevertResult(result)
+        }
+        if (inputRef.current.trim()) {
+          Alert.alert(
+            t("session.alerts.replaceDraftTitle"),
+            t("session.alerts.replaceDraftMessage"),
+            [
+              { text: t("common.cancel"), style: "cancel" },
+              { text: t("session.actions.replace"), style: "destructive", onPress: doRevert },
+            ],
+          )
+          return
+        }
+        doRevert()
+        return
+      }
+
+      if (action === "regenerate") {
+        const doRegen = async () => {
+          const result = await useSessions.getState().regenerateMessage(msg.id)
+          setActionMessage(null)
+          actionMessageRef.current = null
+          if (!result.ok) applyRevertResult(result)
+        }
+        doRegen()
+      }
+    },
+    [applyRevertResult, deleteMessage, t],
+  )
+
+  const handleRename = useCallback(() => {
+    setRenameText(currentSession?.title || "")
+    setRenameVisible(true)
+  }, [currentSession?.title])
+
+  const handleRenameConfirm = useCallback(async () => {
+    const title = renameText.trim()
+    if (!title) return
+    setRenameVisible(false)
+    await renameSession(title)
+  }, [renameText, renameSession])
+
+  const handleCompact = useCallback(async () => {
+    const ok = await summarizeSession()
+    if (ok) {
+      Alert.alert(t("session.alerts.compactStartedTitle"), t("session.alerts.compactStartedMessage"))
+    }
+  }, [summarizeSession, t])
 
   const scrollToBottom = useCallback((animated = true) => {
     flatListRef.current?.scrollToOffset({ offset: 0, animated })
@@ -606,7 +695,7 @@ export default function SessionScreen() {
         // keyboard (#147). "padding" restores avoidance without depending
         // on native resize.
         behavior="padding"
-        keyboardVerticalOffset={Platform.OS === "ios" ? 90 : 0}
+        keyboardVerticalOffset={Platform.OS === "ios" ? 90 : insets.top + 56}
       >
         {/* Session info pulldown */}
         <SessionInfo
@@ -624,6 +713,8 @@ export default function SessionScreen() {
             flatListRef.current?.scrollToEnd({ animated: true })
           }}
           onClose={() => setShowInfo(false)}
+          onRename={handleRename}
+          onCompact={handleCompact}
         />
 
         {/* SSE reconnect/connected banner */}
@@ -669,6 +760,7 @@ export default function SessionScreen() {
               ref={flatListRef}
               data={messageData}
               inverted
+              keyboardShouldPersistTaps="handled"
               keyExtractor={(item) => item.message.id}
               renderItem={({ item }) => (
                 <MessageBubble
@@ -857,6 +949,42 @@ export default function SessionScreen() {
         isDark={isDark}
         onSelect={setVariant}
       />
+
+      {/* Message actions bottom sheet */}
+      {actionMessage && (
+        <MessageActions
+          sheetRef={actionSheetRef}
+          isDark={isDark}
+          isUser={actionMessage.role === "user"}
+          messageText={actionMessage.text}
+          onAction={handleMessageAction}
+        />
+      )}
+
+      {/* Rename dialog */}
+      <Modal visible={renameVisible} transparent animationType="fade" onRequestClose={() => setRenameVisible(false)}>
+        <View style={s.renameOverlay}>
+          <View style={[s.renameModal, isDark && s.renameModalDark]}>
+            <Text style={[s.renameTitle, isDark && s.textWhite]}>{t("session.actions.rename")}</Text>
+            <TextInput
+              style={[s.renameInput, isDark && s.renameInputDark]}
+              value={renameText}
+              onChangeText={setRenameText}
+              autoFocus
+              placeholder={currentSession?.title || ""}
+              placeholderTextColor={isDark ? "#666666" : "#999999"}
+            />
+            <View style={s.renameActions}>
+              <TouchableOpacity style={s.renameBtn} onPress={() => setRenameVisible(false)}>
+                <Text style={s.renameBtnText}>{t("common.cancel")}</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={[s.renameBtn, s.renameBtnPrimary]} onPress={handleRenameConfirm}>
+                <Text style={s.renameBtnPrimaryText}>{t("session.actions.rename")}</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </>
   )
 }
@@ -1064,4 +1192,36 @@ const s = StyleSheet.create({
     justifyContent: "space-between",
   },
   bannerAction: { color: "#93c5fd", fontSize: 13, fontWeight: "700" },
+
+  // Rename dialog
+  renameOverlay: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: "rgba(0,0,0,0.5)",
+  },
+  renameModal: {
+    width: "80%",
+    backgroundColor: "#ffffff",
+    borderRadius: 12,
+    padding: 20,
+    gap: 16,
+  },
+  renameModalDark: { backgroundColor: "#1a1a1a" },
+  renameTitle: { fontSize: 17, fontWeight: "700", color: "#0a0a0a" },
+  renameInput: {
+    borderWidth: 1,
+    borderColor: "#e5e5e5",
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 15,
+    color: "#0a0a0a",
+  },
+  renameInputDark: { borderColor: "#2a2a2a", backgroundColor: "#2a2a2a", color: "#ffffff" },
+  renameActions: { flexDirection: "row", justifyContent: "flex-end", gap: 8 },
+  renameBtn: { paddingHorizontal: 16, paddingVertical: 8, borderRadius: 8 },
+  renameBtnText: { fontSize: 15, color: "#666666", fontWeight: "600" },
+  renameBtnPrimary: { backgroundColor: "#8b5cf6" },
+  renameBtnPrimaryText: { fontSize: 15, color: "#ffffff", fontWeight: "700" },
 })

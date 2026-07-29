@@ -2,6 +2,7 @@ import { create } from "zustand"
 import { ApiError, type Session, type Message, type Part, type Event, type MessageWithParts, type Client } from "../lib/sdk"
 import { useConnections } from "./connections"
 import { useSettings } from "./settings"
+import { useCatalog } from "./catalog"
 import { addBreadcrumb } from "../lib/sentry"
 import { AnalyticsEvent, track } from "../lib/analytics"
 import { extractPromptFromParts, type PromptFromParts } from "../lib/prompt-from-parts"
@@ -52,6 +53,15 @@ interface SessionsState {
   ) => Promise<void>
   abortSession: () => Promise<void>
   refreshMessages: () => Promise<void>
+
+  // Message-level actions
+  deleteMessage: (messageID: string) => Promise<void>
+  regenerateMessage: (messageID: string) => Promise<RevertResult>
+
+  // Session-level actions
+  forkSession: (messageID?: string) => Promise<Session | null>
+  renameSession: (title: string) => Promise<void>
+  summarizeSession: () => Promise<boolean>
 
   // Revert (edit sent message) / unrevert (undo the pending revert)
   revertToMessage: (messageID: string) => Promise<RevertResult>
@@ -254,6 +264,58 @@ export const useSessions = create<SessionsState>((set, get) => ({
     }
   },
 
+  forkSession: async (messageID) => {
+    const client = clientFor(get().currentSession?.directory)
+    const session = get().currentSession
+    if (!client || !session) return null
+
+    try {
+      const created = await client.session.fork(session.id, messageID)
+      return created
+    } catch (err) {
+      console.error("Failed to fork session:", err)
+      set({ error: "Failed to fork session" })
+      return null
+    }
+  },
+
+  renameSession: async (title) => {
+    const client = clientFor(get().currentSession?.directory)
+    const session = get().currentSession
+    if (!client || !session) return
+
+    try {
+      const updated = await client.session.update(session.id, { title })
+      set((state) => ({
+        sessions: state.sessions.map((s) => (s.id === session.id ? updated : s)),
+        currentSession: state.currentSession?.id === session.id ? updated : state.currentSession,
+      }))
+    } catch (err) {
+      console.error("Failed to rename session:", err)
+      set({ error: "Failed to rename session" })
+    }
+  },
+
+  summarizeSession: async () => {
+    const client = clientFor(get().currentSession?.directory)
+    const session = get().currentSession
+    const cat = useCatalog.getState()
+    const model = cat.model
+    if (!client || !session || !model) return false
+
+    try {
+      await client.session.summarize(session.id, {
+        providerID: model.providerID,
+        modelID: model.modelID,
+      })
+      return true
+    } catch (err) {
+      console.error("Failed to summarize session:", err)
+      set({ error: "Failed to summarize session" })
+      return false
+    }
+  },
+
   sendMessage: async (text, model, agent, files, variant) => {
     const client = clientFor(get().currentSession?.directory)
     const session = get().currentSession
@@ -361,6 +423,51 @@ export const useSessions = create<SessionsState>((set, get) => ({
       set({ messages, parts })
     } catch (error) {
       set({ error: "Failed to refresh messages" })
+    }
+  },
+
+  deleteMessage: async (messageID) => {
+    const client = clientFor(get().currentSession?.directory)
+    const session = get().currentSession
+    if (!client || !session) return
+
+    try {
+      await client.session.deleteMessage(session.id, messageID)
+      set((state) => ({
+        messages: state.messages.filter((m) => m.id !== messageID),
+        parts: Object.fromEntries(Object.entries(state.parts).filter(([k]) => k !== messageID)),
+      }))
+    } catch (err) {
+      console.error("Failed to delete message:", err)
+      set({ error: "Failed to delete message" })
+    }
+  },
+
+  regenerateMessage: async (messageID) => {
+    const { messages, currentSession } = get()
+    if (!currentSession) return { ok: false, reason: "error" }
+
+    const msgIndex = messages.findIndex((m) => m.id === messageID)
+    if (msgIndex === -1) return { ok: false, reason: "error" }
+    const target = messages[msgIndex]
+    if (target.role !== "assistant") return { ok: false, reason: "error" }
+
+    const userMsgs = messages.slice(0, msgIndex).filter((m) => m.role === "user")
+    const lastUserMsg = userMsgs[userMsgs.length - 1]
+    if (!lastUserMsg) return { ok: false, reason: "error" }
+
+    const result = await get().revertToMessage(lastUserMsg.id)
+    if (!result.ok) return result
+
+    const files = result.files
+      .filter((f): f is (typeof f & { url: string; mime: string }) => !!f.url && !!f.mime)
+      .map((f) => ({ uri: f.url, mime: f.mime, filename: f.filename }))
+
+    try {
+      await get().sendMessage(result.text, lastUserMsg.model, lastUserMsg.agent, files)
+      return { ok: true, text: result.text, files: result.files }
+    } catch {
+      return { ok: false, reason: "error" }
     }
   },
 

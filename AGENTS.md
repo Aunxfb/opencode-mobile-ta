@@ -263,3 +263,6 @@ For pushes/gh CLI on this repo: `source ~/.env.d/github-dzianisv.env`
 
 - Upstream: `anomalyco/opencode#10288`
 - Branch on upstream fork: `feat/android-backbone-10288` on `dzianisv/opencode`
+
+# update opencode repo reference
+$URL = "https://github.com/sst/opencode"; $REPO_NAME = [System.IO.Path]::GetFileNameWithoutExtension($URL); git subtree pull --prefix="REMOTE_REPO_REFERENCES/$REPO_NAME" $URL dev --squash
