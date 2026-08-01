@@ -32,8 +32,26 @@ See [`.agents/retro.md`](.agents/retro.md) for lessons from past tasks. Read ent
 
 React Native / Expo mobile client for opencode. Connects to an opencode server instance via HTTP + SSE for real-time updates.
 
-**Repo**: `dzianisv/opencode-mobile` (standalone, not part of opencode monorepo)
 **Package name**: `cc.agentlabs.opencode`
+
+## Fork & Upstream
+
+This repo (`Aunxfb/opencode-mobile-ta`) is a **fork** of [`dzianisv/opencode-mobile`](https://github.com/dzianisv/opencode-mobile). It keeps local-only work (e.g. the `REMOTE_REPO_REFERENCES/opencode` subtree) on top of upstream's `main`.
+
+**Remotes:**
+- `origin` → `https://github.com/Aunxfb/opencode-mobile-ta` (this fork; pushes/PRs go here)
+- `upstream` → `https://github.com/dzianisv/opencode-mobile` (the source repo)
+
+**Sync from upstream (do this before merging/releasing):**
+```bash
+git fetch upstream
+git log --oneline HEAD..upstream/main   # review what's new
+git merge upstream/main --no-edit        # merge (local branch diverges, not fast-forward)
+```
+
+Notes:
+- Upstream is the primary source of truth for app code; keep the fork's extra commits (like the opencode subtree under `REMOTE_REPO_REFERENCES/`) out of upstream PRs.
+- Don't rewrite the merge commits; prefer merge over rebase so upstream history stays intact.
 
 ## Architecture
 
@@ -64,6 +82,10 @@ scripts/
 - **Fire-and-forget sends**: `sendMessage` posts to the API but doesn't await response; SSE events drive all UI updates
 - **Session status**: Derived from `session.status` events (`idle`/`busy`/`retry`) + last part type for status text
 - **Markdown**: `react-native-marked` wrapped in our own `Markdown` component with custom `CodeBlock` (copy button). Designed to be swappable/publishable later.
+
+## Commit Messages
+
+The agent writes all commit messages. Use conventional commits matching the upstream repo's style: `feat(scope): ...`, `fix(scope): ...`, `docs: ...`, `chore(scope): ...`, `test(scope): ...`, with `(closes #N)` / `(#PR)` suffixes where relevant. Rewording pushed history requires a force-push to this fork's `origin` only — never rewrite or push to `upstream`.
 
 ## Style Guide
 
