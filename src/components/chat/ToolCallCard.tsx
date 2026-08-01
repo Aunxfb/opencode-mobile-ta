@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react"
+import { useState, useCallback, useEffect } from "react"
 import { View, Text, TouchableOpacity, StyleSheet, ActivityIndicator, ScrollView, Platform } from "react-native"
 import { Ionicons } from "@expo/vector-icons"
 import { useTranslation } from "react-i18next"
@@ -189,10 +189,23 @@ function WebfetchDetail({ input, isDark }: { input: unknown; isDark: boolean }) 
   )
 }
 
-function TaskDetail({ input, isDark }: { input: unknown; isDark: boolean }) {
+// opencode wraps a delegated (task) tool's result in
+// <task_result>...</task_result> (or <task_error> on failure) — strip the
+// wrapper tags so the subagent's actual output is readable.
+function taskOutputText(output: unknown): string | undefined {
+  if (typeof output !== "string") return undefined
+  const result = output.match(/<task_result>\s*([\s\S]*?)\s*<\/task_result>/)
+  if (result) return result[1]
+  const error = output.match(/<task_error>\s*([\s\S]*?)\s*<\/task_error>/)
+  if (error) return error[1]
+  return output
+}
+
+function TaskDetail({ input, output, isDark }: { input: unknown; output: unknown; isDark: boolean }) {
   const description =
     typeof input === "object" && input !== null ? (input as Record<string, unknown>).description : undefined
   const prompt = typeof input === "object" && input !== null ? (input as Record<string, unknown>).prompt : undefined
+  const result = taskOutputText(output)
   return (
     <View style={s.detailSection}>
       {typeof description === "string" && <Text style={[s.detailMeta, isDark && s.detailMetaDark]}>{description}</Text>}
@@ -200,6 +213,13 @@ function TaskDetail({ input, isDark }: { input: unknown; isDark: boolean }) {
         <View style={[s.codeBlock, isDark && s.codeBlockDark, { marginTop: 6 }]}>
           <Text style={[s.codePre, isDark && s.codePteDark]} selectable>
             {prompt}
+          </Text>
+        </View>
+      )}
+      {result && result.length > 0 && (
+        <View style={[s.codeBlock, isDark && s.codeBlockDark, { marginTop: 6 }]}>
+          <Text style={[s.codePre, isDark && s.codePteDark]} selectable>
+            {result}
           </Text>
         </View>
       )}
@@ -278,7 +298,7 @@ function ToolDetail({ tool, isDark }: { tool: Part; isDark: boolean }) {
     case "websearch":
       return <WebfetchDetail input={input} isDark={isDark} />
     case "task":
-      return <TaskDetail input={input} isDark={isDark} />
+      return <TaskDetail input={input} output={output} isDark={isDark} />
     case "todowrite":
       return <TodoDetail input={input} isDark={isDark} />
     default:
@@ -322,23 +342,31 @@ export function ToolCallCard({ tool, isDark }: Props) {
   const elapsed = duration(tool.state?.time?.start, tool.state?.time?.end)
   const hasDetail = tool.state?.input !== undefined || tool.state?.output !== undefined || error
 
+  // A delegation (task) card auto-expands when the subagent finishes, so the
+  // result is visible without an extra tap — the whole point of the card.
+  const isTask = tool.tool === "task"
+  useEffect(() => {
+    if (isTask && status === "completed" && hasDetail) setExpanded(true)
+  }, [isTask, status, hasDetail])
+
   const toggle = useCallback(() => {
     if (hasDetail) setExpanded((v) => !v)
   }, [hasDetail])
 
   return (
-    <TouchableOpacity
+    <View
       style={[
         s.card,
         isDark && s.cardDark,
         status === "error" && s.cardError,
         status === "error" && isDark && s.cardErrorDark,
       ]}
-      onPress={toggle}
-      activeOpacity={hasDetail ? 0.7 : 1}
     >
-      {/* Header row */}
-      <View style={s.header}>
+      {/* Header row — the only tappable area. The expanded detail stays a
+          sibling (not a child) of the touchable: a ScrollView nested inside a
+          TouchableOpacity can have its pan responder eaten, leaving long
+          output clipped at the max-height with no way to scroll it. */}
+      <TouchableOpacity style={s.header} onPress={toggle} activeOpacity={hasDetail ? 0.7 : 1}>
         <View style={s.headerLeft}>
           <Ionicons name={icon as any} size={16} color={color} />
           <Text style={[s.name, isDark && s.nameDark]} numberOfLines={1}>
@@ -358,19 +386,19 @@ export function ToolCallCard({ tool, isDark }: Props) {
             />
           )}
         </View>
-      </View>
+      </TouchableOpacity>
 
       {/* Error banner */}
       {error && !expanded && <ErrorBanner message={error} isDark={isDark} />}
 
       {/* Expanded detail */}
       {expanded && (
-        <ScrollView style={s.detailScroll} nestedScrollEnabled showsVerticalScrollIndicator={false}>
+        <ScrollView style={s.detailScroll} nestedScrollEnabled showsVerticalScrollIndicator>
           {error && <ErrorBanner message={error} isDark={isDark} />}
           <ToolDetail tool={tool} isDark={isDark} />
         </ScrollView>
       )}
-    </TouchableOpacity>
+    </View>
   )
 }
 

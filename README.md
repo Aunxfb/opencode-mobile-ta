@@ -1,5 +1,71 @@
 # OpenCode Mobile
 
+---
+
+## TA PERSONAL CHANGES
+
+All changes below are local modifications made during TA-assisted development. They are not part of the upstream codebase.
+
+### Bugfix: Keyboard hides input on Android (portrait)
+
+`app/session/[id].tsx` — Changed `keyboardVerticalOffset` on Android from `0` to `insets.top + 56` so the input stays visible when the keyboard opens. Added `keyboardShouldPersistTaps="handled"` to the FlatList so tapping outside the input dismisses the keyboard without losing scroll position.
+
+### Bugfix: Tasks stuck "in progress" / text streaming not appearing
+
+**Root cause:** The server streams text incrementally via `message.part.delta` SSE events (with `field: "text"` and partial `delta` content), but the mobile client only handled `message.part.updated` (which fires at start and end). Delta events were silently ignored — text never appeared until the entire response completed.
+
+**`src/stores/events.ts`** — Added `"message.part.delta"` case (line 434) that finds the part by `partID` in the sessions store, appends the `delta` to the part's `.text` field, and updates state — triggering incremental re-render in real time.
+
+**Watchdog fallback** — Added `lastActivityAt` tracking in all SSE handlers, a 30s watchdog interval, and `clearStaleBusySessions()` that force-idles sessions silent for >10min (emits error + notification). Exported `resyncSessionStatus()` for manual single-session refresh.
+
+**`src/components/chat/StatusIndicator.tsx`** — Amber bar + " · Still working..." suffix when busy >5min with no activity; tap triggers `resyncSessionStatus()`.
+
+### Bugfix: Long content clipped in reasoning / tool call output
+
+**`src/components/chat/ReasoningBlock.tsx`** — Wrapped expanded text in `<ScrollView maxHeight={300}>`.
+
+**`src/components/chat/ToolCallCard.tsx`** — Removed `numberOfLines={N}` clipping from all inside-scroll text blocks (bash output, write content, edit fallback, patch, glob/grep results, task prompts, generic details, error banners) — the ScrollView's `maxHeight: 300` is the sole constraint.
+
+### Feature: Per-message action sheet (long-press any message)
+
+**New file** `src/components/chat/MessageActions.tsx` — `@gorhom/bottom-sheet`-based action sheet with role-aware options:
+
+| Action | User | Assistant | Behavior |
+|--------|------|-----------|----------|
+| **Copy** | ✅ | ✅ | Message text via `expo-clipboard` |
+| **Edit** | ✅ | ❌ | Revert session → prefill composer |
+| **Regenerate** | ❌ | ✅ | Delete assistant msg + re-send last user msg |
+| **Fork** | ✅ | ✅ | Create child session from this message |
+| **Delete** | ✅ | ✅ | `DELETE /session/:id/message/:id` + local removal |
+
+**`src/stores/sessions.ts`** — Added `deleteMessage()`, `regenerateMessage()`, `forkSession()`.
+
+**`src/lib/sdk.ts`** — Added `client.session.deleteMessage()`.
+
+**`src/components/chat/MessageBubble.tsx`** — Long-press enabled for assistant messages too (was user-only).
+
+**`app/session/[id].tsx`** — Replaced bare `Alert.alert` action picker with the bottom sheet; wired copy, delete, edit, regenerate, fork.
+
+### Feature: Fork, Rename, Compact
+
+**`src/lib/sdk.ts`** — Added `client.session.fork()` (POST `/session/:id/fork`) and `client.session.summarize()` (POST `/session/:id/summarize`).
+
+**`src/stores/sessions.ts`** — Added `forkSession()` (returns new session for navigation), `renameSession()` (PATCH title), `summarizeSession()`.
+
+**`src/components/chat/SessionInfo.tsx`** — Added **Rename** and **Compact** action buttons.
+
+**`app/session/[id].tsx`** — Rename opens a modal with `TextInput` pre-filled with current title; Compact calls summarize with the selected model; Fork navigates to the new child session via `router.push()`.
+
+### i18n
+
+**`src/lib/i18n/en.json`** and `zh-Hans.json` — Added keys: `copyMessage`, `regenerate`, `fork`, `rename`, `compact`, `deleteConfirmTitle`, `deleteConfirmMessage`, `compactStartedTitle`, `compactStartedMessage`.
+
+---
+
+## <end of TA changes>
+
+---
+
 **The open-source Android client for the [opencode](https://github.com/sst/opencode) AI coding agent.**
 AI-assisted coding from your phone — Android, via Google Play, F-Droid, or a direct APK.
 

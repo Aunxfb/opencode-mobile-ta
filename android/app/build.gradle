@@ -83,11 +83,28 @@ def jscFlavor = 'io.github.react-native-community:jsc-android:2026004.+'
 
 apply from: new File(["node", "--print", "require('path').dirname(require.resolve('@sentry/react-native/package.json'))"].execute().text.trim(), "sentry.gradle")
 
+def sentryDisableAutoUpload = "false"
+def localPropsFile = rootProject.file("local.properties")
+if (localPropsFile.exists()) {
+    def localProps = new Properties()
+    localProps.load(new FileInputStream(localPropsFile))
+    sentryDisableAutoUpload = localProps.getProperty("sentry.disableAutoUpload", "false")
+}
+project.ext.shouldSentryAutoUploadGeneral = { ->
+    return System.getenv('SENTRY_DISABLE_AUTO_UPLOAD') != 'true' && sentryDisableAutoUpload != 'true'
+}
+
 android {
     ndkVersion rootProject.ext.ndkVersion
 
     buildToolsVersion rootProject.ext.buildToolsVersion
     compileSdk rootProject.ext.compileSdkVersion
+
+    externalNativeBuild {
+        cmake {
+            version "4.1.0"
+        }
+    }
 
     namespace 'cc.agentlabs.opencode'
     defaultConfig {

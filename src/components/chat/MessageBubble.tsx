@@ -36,10 +36,7 @@ export const MessageBubble = memo(
     const reasoning = reasoningParts.map((p) => p.text).join("\n") || ""
 
     return (
-      <TouchableOpacity
-        activeOpacity={onLongPress ? 0.7 : 1}
-        onLongPress={onLongPress ? () => onLongPress(message.id) : undefined}
-        disabled={!onLongPress}
+      <View
         style={[
           s.bubble,
           isUser ? s.user : s.assistant,
@@ -48,67 +45,78 @@ export const MessageBubble = memo(
         ]}
         testID={`chat-bubble-${message.role}`}
       >
-        {/* Role indicator */}
-        <View style={s.header}>
-          <Ionicons
-            name={isUser ? "person" : "sparkles"}
-            size={14}
-            color={isUser ? (isDark ? "#ffffff" : "#0a0a0a") : "#8b5cf6"}
-          />
-          <Text style={[s.role, isUser && s.roleUser, isDark && s.textWhite]}>{isUser ? "You" : "Assistant"}</Text>
-          {message.model && <Text style={[s.modelTag, isDark && s.modelTagDark]}>{message.model.modelID}</Text>}
-          {!isUser && message.modelID && <Text style={[s.modelTag, isDark && s.modelTagDark]}>{message.modelID}</Text>}
-        </View>
+        {/* Reasoning and tool calls render OUTSIDE the touchable below: their
+            collapsible detail is a nested vertical ScrollView, and a
+            ScrollView nested inside a TouchableOpacity gets its pan responder
+            eaten, so long output clips instead of scrolling
+            (facebook/react-native#25289). */}
+        <TouchableOpacity
+          activeOpacity={onLongPress ? 0.7 : 1}
+          onLongPress={onLongPress ? () => onLongPress(message.id) : undefined}
+          disabled={!onLongPress}
+        >
+          {/* Role indicator */}
+          <View style={s.header}>
+            <Ionicons
+              name={isUser ? "person" : "sparkles"}
+              size={14}
+              color={isUser ? (isDark ? "#ffffff" : "#0a0a0a") : "#8b5cf6"}
+            />
+            <Text style={[s.role, isUser && s.roleUser, isDark && s.textWhite]}>{isUser ? "You" : "Assistant"}</Text>
+            {message.model && <Text style={[s.modelTag, isDark && s.modelTagDark]}>{message.model.modelID}</Text>}
+            {!isUser && message.modelID && <Text style={[s.modelTag, isDark && s.modelTagDark]}>{message.modelID}</Text>}
+          </View>
 
-        {/* Image attachments */}
-        {fileParts.length > 0 && (
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={s.imageRow}
-            style={s.imageScroll}
-          >
-            {fileParts.map((fp) => (
-              <View key={fp.id} style={s.imageWrap}>
-                <Image source={{ uri: fp.url }} style={s.attachedImage} resizeMode="cover" />
-                {fp.filename && (
-                  <Text style={[s.imageLabel, isDark && s.imageLabelDark]} numberOfLines={1}>
-                    {fp.filename}
-                  </Text>
-                )}
+          {/* Image attachments */}
+          {fileParts.length > 0 && (
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={s.imageRow}
+              style={s.imageScroll}
+            >
+              {fileParts.map((fp) => (
+                <View key={fp.id} style={s.imageWrap}>
+                  <Image source={{ uri: fp.url }} style={s.attachedImage} resizeMode="cover" />
+                  {fp.filename && (
+                    <Text style={[s.imageLabel, isDark && s.imageLabelDark]} numberOfLines={1}>
+                      {fp.filename}
+                    </Text>
+                  )}
+                </View>
+              ))}
+            </ScrollView>
+          )}
+
+          {/* Message text */}
+          {text.length > 0 &&
+            (isUser ? (
+              <Text style={[s.messageText, isDark && s.textWhite]} selectable>
+                {text}
+              </Text>
+            ) : (
+              <View style={s.markdownWrap}>
+                <Markdown>{text}</Markdown>
               </View>
             ))}
-          </ScrollView>
-        )}
+
+          {/* Tokens/cost for assistant messages */}
+          {!isUser && message.tokens && (
+            <Text style={[s.tokens, isDark && s.tokensDark]}>
+              {message.tokens.input + message.tokens.output} tokens
+              {message.cost ? ` · $${message.cost.toFixed(4)}` : ""}
+            </Text>
+          )}
+        </TouchableOpacity>
 
         {/* Reasoning (collapsible) */}
         {reasoning.length > 0 && <ReasoningBlock text={reasoning} isDark={isDark} />}
-
-        {/* Message text */}
-        {text.length > 0 &&
-          (isUser ? (
-            <Text style={[s.messageText, isDark && s.textWhite]} selectable>
-              {text}
-            </Text>
-          ) : (
-            <View style={s.markdownWrap}>
-              <Markdown>{text}</Markdown>
-            </View>
-          ))}
 
         {/* Tool calls */}
         {toolParts.map((tool) => (
           <ToolCallCard key={tool.id} tool={tool} isDark={isDark} />
         ))}
-
-        {/* Tokens/cost for assistant messages */}
-        {!isUser && message.tokens && (
-          <Text style={[s.tokens, isDark && s.tokensDark]}>
-            {message.tokens.input + message.tokens.output} tokens
-            {message.cost ? ` · $${message.cost.toFixed(4)}` : ""}
-          </Text>
-        )}
-      </TouchableOpacity>
+      </View>
     )
   },
   (prev, next) => {

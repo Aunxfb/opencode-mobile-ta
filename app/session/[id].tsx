@@ -7,7 +7,7 @@ import {
   TouchableOpacity,
   StyleSheet,
   useColorScheme,
-  KeyboardAvoidingView,
+  Keyboard,
   Platform,
   ActivityIndicator,
   Alert,
@@ -144,6 +144,25 @@ export default function SessionScreen() {
 
   const shortDir = getShortDir(currentSession?.directory)
   const [showScrollButton, setShowScrollButton] = useState(false)
+
+  // Keyboard height drives the composer's bottom padding explicitly. The
+  // previous KeyboardAvoidingView behavior="padding" relied on its own
+  // internal keyboard-frame state, which can go stale on close (leaving a
+  // permanent gap between the input and the bottom edge after the keyboard
+  // hides). Listening to Keyboard events directly resets to 0 on hide, so the
+  // composer always returns to the bottom edge. On Android the window no
+  // longer resizes (edge-to-edge, see the removed adjustResize note), so
+  // padding here is the only lift the composer gets.
+  const [keyboardHeight, setKeyboardHeight] = useState(0)
+  useEffect(() => {
+    const showEvent = Platform.OS === "ios" ? "keyboardWillShow" : "keyboardDidShow"
+    const hideEvent = Platform.OS === "ios" ? "keyboardWillHide" : "keyboardDidHide"
+    const subs = [
+      Keyboard.addListener(showEvent, (e) => setKeyboardHeight(e.endCoordinates.height)),
+      Keyboard.addListener(hideEvent, () => setKeyboardHeight(0)),
+    ]
+    return () => subs.forEach((s) => s.remove())
+  }, [])
 
   // SSE reconnect banner
   const reconnectAttempts = useEvents((s) => s.reconnectAttempts)
@@ -680,22 +699,15 @@ export default function SessionScreen() {
         }}
       />
 
-      <KeyboardAvoidingView
-        style={[s.container, isDark && s.containerDark]}
-        // Both platforms use "padding" so the composer/toolbar is pushed up
-        // above the keyboard via JS-measured keyboard height.
-        //
-        // Android previously relied on the native android:windowSoftInputMode
-        // (adjustResize, see AndroidManifest.xml) with behavior={undefined}
-        // to let the OS resize the window (see #70/#53). Since adopting
-        // Expo's mandatory edge-to-edge display, Android no longer resizes
-        // the window when the keyboard opens — the system assumes insets are
-        // handled dynamically — so adjustResize became a no-op and the
-        // bottom toolbar + input were left completely hidden behind the
-        // keyboard (#147). "padding" restores avoidance without depending
-        // on native resize.
-        behavior="padding"
-        keyboardVerticalOffset={Platform.OS === "ios" ? 90 : insets.top + 56}
+      <View
+        style={[s.container, isDark && s.containerDark, { paddingBottom: keyboardHeight }]}
+        // The composer is lifted above the keyboard by explicit bottom padding
+        // driven by Keyboard events (see the keyboardHeight effect above).
+        // Unlike KeyboardAvoidingView behavior="padding", this resets to 0
+        // deterministically when the keyboard hides, so the input always
+        // returns to the bottom edge instead of leaving a gap. Android's
+        // adjustResize is a no-op under edge-to-edge (#147), so this padding
+        // is the only lift the composer gets.
       >
         {/* Session info pulldown */}
         <SessionInfo
@@ -930,7 +942,7 @@ export default function SessionScreen() {
             )}
           </View>
         </View>
-      </KeyboardAvoidingView>
+      </View>
 
       {/* Model picker bottom sheet */}
       <ModelPicker
