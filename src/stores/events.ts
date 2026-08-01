@@ -158,6 +158,61 @@ function updateActivity(sessionID: string) {
   }))
 }
 
+// --- Thinking-streaming coalescing ---
+// The server streams reasoning/tool/text output as a firehose of
+// message.part.delta events (hundreds per second). Applying each one to the
+// stores immediately re-renders every screen subscribed to them (the session
+// screen plus the sessions tab, which stays mounted under the native stack)
+// on every event — the JS thread saturates and the whole UI freezes until the
+// stream ends. Buffer deltas and flush them to the stores at most every
+// DELTA_FLUSH_MS instead.
+const DELTA_FLUSH_MS = 80
+const pendingDeltas = new Map<string, { messageID: string; partID: string; delta: string }>()
+let deltaFlushTimer: ReturnType<typeof setTimeout> | null = null
+
+function scheduleDeltaFlush() {
+  if (deltaFlushTimer) return
+  deltaFlushTimer = setTimeout(() => {
+    deltaFlushTimer = null
+    flushPendingDeltas()
+  }, DELTA_FLUSH_MS)
+}
+
+function clearPendingDeltas() {
+  pendingDeltas.clear()
+  if (deltaFlushTimer) {
+    clearTimeout(deltaFlushTimer)
+    deltaFlushTimer = null
+  }
+}
+
+function flushPendingDeltas() {
+  if (pendingDeltas.size === 0) return
+  const deltas = Array.from(pendingDeltas.values())
+  pendingDeltas.clear()
+
+  useSessions.setState((state) => {
+    let parts = state.parts
+    let changed = false
+    for (const d of deltas) {
+      const messageParts = parts[d.messageID]
+      if (!messageParts) continue
+      const idx = messageParts.findIndex((p) => p.id === d.partID)
+      if (idx === -1) continue
+      const oldText = messageParts[idx].text || ""
+      // An authoritative part update or refresh may have landed the streamed
+      // text already (server-side full part) — appending again would duplicate.
+      if (oldText.length >= d.delta.length && oldText.endsWith(d.delta)) continue
+      if (parts === state.parts) parts = { ...state.parts }
+      const newParts = messageParts.slice()
+      newParts[idx] = { ...messageParts[idx], text: oldText + d.delta }
+      parts[d.messageID] = newParts
+      changed = true
+    }
+    return changed ? { parts, isLoading: false } : {}
+  })
+}
+
 // Public: resync a single session against the server. Can be called from UI
 // (manual "force refresh" in StatusIndicator) when the user suspects a stuck
 // session. Same logic as resyncBusySessions but scoped to one sessionID.
@@ -261,6 +316,7 @@ export const useEvents = create<EventsState>((set, get) => ({
   connect: () => {
     controller?.abort()
     controller = null
+    clearPendingDeltas()
     if (reconnectTimer) {
       clearTimeout(reconnectTimer)
       reconnectTimer = null
@@ -418,6 +474,9 @@ export const useEvents = create<EventsState>((set, get) => ({
             case "message.part.updated": {
               const part = props.part as Part | undefined
               if (!part) break
+              // A full part update is authoritative — drop any buffered deltas
+              // for it so the flush can't append stale text on top.
+              pendingDeltas.delete(`${part.messageID}\u0000${part.id}`)
 
               // Update status text from the latest part
               const sessionID = (part as any).sessionID as string
@@ -443,22 +502,14 @@ export const useEvents = create<EventsState>((set, get) => ({
               updateActivity(sessionID)
 
               if (field === "text") {
-                const sessionsState = useSessions.getState()
-                const messageParts = sessionsState.parts[messageID]
-                if (!messageParts) break
-
-                const idx = messageParts.findIndex((p) => p.id === partID)
-                if (idx === -1) break
-
-                const oldPart = messageParts[idx]
-                const newPart = { ...oldPart, text: (oldPart.text || "") + delta }
-                const newParts = messageParts.slice()
-                newParts[idx] = newPart
-
-                useSessions.setState((state) => ({
-                  parts: { ...state.parts, [messageID]: newParts },
-                  isLoading: false,
-                }))
+                const key = `${messageID}\u0000${partID}`
+                const existing = pendingDeltas.get(key)
+                pendingDeltas.set(key, {
+                  messageID,
+                  partID,
+                  delta: existing ? existing.delta + delta : delta,
+                })
+                scheduleDeltaFlush()
               }
               break
             }
@@ -632,6 +683,7 @@ export const useEvents = create<EventsState>((set, get) => ({
     erroredSessions.clear()
     abortedSessions.clear()
     staleClearedSessions.clear()
+    clearPendingDeltas()
     set({
       connected: false,
       authError: false,
