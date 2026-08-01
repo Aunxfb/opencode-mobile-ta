@@ -229,9 +229,9 @@ export default function SessionsScreen() {
   // Directories collapsed in the grouped session list. Empty by default —
   // all groups start expanded (#67).
   const [collapsedDirs, setCollapsedDirs] = useState<Set<string>>(new Set())
-  // Directories whose "Earlier" (old threads) sub-section is collapsed. Empty
-  // by default — earlier threads start expanded.
-  const [earlierCollapsedDirs, setEarlierCollapsedDirs] = useState<Set<string>>(new Set())
+  // Directories whose "Earlier" (old threads) sub-section is expanded. Empty by
+  // default — earlier threads start collapsed (tap the "Earlier" row to reveal).
+  const [expandedEarlierDirs, setExpandedEarlierDirs] = useState<Set<string>>(new Set())
 
   const toggleGroup = useCallback((directory: string) => {
     setCollapsedDirs((prev) => {
@@ -243,7 +243,7 @@ export default function SessionsScreen() {
   }, [])
 
   const toggleEarlier = useCallback((directory: string) => {
-    setEarlierCollapsedDirs((prev) => {
+    setExpandedEarlierDirs((prev) => {
       const next = new Set(prev)
       if (next.has(directory)) next.delete(directory)
       else next.add(directory)
@@ -272,14 +272,14 @@ export default function SessionsScreen() {
       if (collapsedDirs.has(group.directory)) return out
       for (const session of recent) out.push({ type: "session", session })
       if (earlier.length > 0) {
-        const earlierCollapsed = earlierCollapsedDirs.has(group.directory)
+        const earlierExpanded = expandedEarlierDirs.has(group.directory)
         out.push({
           type: "earlier-header",
           directory: group.directory,
           count: earlier.length,
-          collapsed: earlierCollapsed,
+          collapsed: !earlierExpanded,
         })
-        if (!earlierCollapsed) {
+        if (earlierExpanded) {
           for (const session of earlier) out.push({ type: "session", session })
         }
       }
@@ -292,7 +292,7 @@ export default function SessionsScreen() {
     const out: ListRow[] = []
     for (const group of groups) out.push(...buildGroup(group, true))
     return out
-  }, [sessions, collapsedDirs, earlierCollapsedDirs, recentDays])
+  }, [sessions, collapsedDirs, expandedEarlierDirs, recentDays])
 
   // Fetch server-known projects when the new session modal opens
   useEffect(() => {
