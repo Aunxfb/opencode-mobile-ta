@@ -1,5 +1,5 @@
 import { useMemo } from "react"
-import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator } from "react-native"
+import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, ScrollView } from "react-native"
 import { Ionicons } from "@expo/vector-icons"
 import { useTranslation } from "react-i18next"
 import type { Message, Session } from "../../lib/sdk"
@@ -185,8 +185,15 @@ export function SessionInfo({
         )}
       </View>
 
-      {/* Navigation actions */}
-      <View style={s.actions}>
+      {/* Navigation actions — horizontal scroll so extra actions (rename,
+          compact, regenerate title, load all, jump to start) never overflow
+          on narrow screens */}
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        style={s.actions}
+        contentContainerStyle={s.actionsContent}
+      >
         {onRename && (
           <TouchableOpacity style={[s.action, isDark && s.actionDark]} onPress={onRename}>
             <Ionicons name="create-outline" size={14} color={isDark ? "#888888" : "#666666"} />
@@ -231,7 +238,7 @@ export function SessionInfo({
             <Text style={[s.actionText, isDark && s.dimDark]}>{t("chat.sessionInfo.jumpToBeginning")}</Text>
           </TouchableOpacity>
         )}
-      </View>
+      </ScrollView>
     </View>
   )
 }
@@ -363,7 +370,9 @@ const s = StyleSheet.create({
     color: "#aaaaaa",
   },
   actions: {
-    flexDirection: "row",
+    flexGrow: 0,
+  },
+  actionsContent: {
     gap: 8,
   },
   action: {
