@@ -1,4 +1,5 @@
 # Mobile App - AGENTS.md
+When the user ask, do a git commit, but let the user do the push manually.
 
 ## Retrospectives (read before related work)
 
