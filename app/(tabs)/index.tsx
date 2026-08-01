@@ -26,7 +26,7 @@ import { useCatalog } from "../../src/stores/catalog"
 import type BottomSheet from "@gorhom/bottom-sheet"
 import type { Session, Project } from "../../src/lib/sdk"
 import { DirectorySwitcher, DirectoryBrowserSheet } from "../../src/components/chat"
-import { groupByDirectory } from "../../src/lib/session-grouping"
+import { groupByDirectory, splitByRecentness } from "../../src/lib/session-grouping"
 import { nameOf } from "../../src/lib/path-utils"
 import { SETUP_GUIDE_URL } from "../../src/lib/links"
 
@@ -109,11 +109,12 @@ function SessionItem({
   )
 }
 
-// Flattened list row — either a collapsible group header or a session.
-// A single flat array keeps FlatList's refresh/empty-state handling as-is
-// instead of switching to SectionList.
+// Flattened list row — either a collapsible group header, an "Earlier" sub-header
+// for old threads within a group, or a session. A single flat array keeps
+// FlatList's refresh/empty-state handling as-is instead of switching to SectionList.
 type ListRow =
   | { type: "header"; directory: string; shortName: string; count: number; collapsed: boolean }
+  | { type: "earlier-header"; directory: string; count: number; collapsed: boolean }
   | { type: "session"; session: Session }
 
 function GroupHeader({
@@ -139,6 +140,35 @@ function GroupHeader({
       <Ionicons
         name={row.collapsed ? "chevron-forward" : "chevron-down"}
         size={16}
+        color={isDark ? "#666666" : "#999999"}
+      />
+    </TouchableOpacity>
+  )
+}
+
+// Secondary header that tucks old threads in a group under an "Earlier" label.
+function EarlierHeader({
+  row,
+  isDark,
+  onToggle,
+}: {
+  row: { directory: string; count: number; collapsed: boolean }
+  isDark: boolean
+  onToggle: () => void
+}) {
+  const { t } = useTranslation()
+  return (
+    <TouchableOpacity
+      style={[styles.earlierHeader, isDark && styles.earlierHeaderDark]}
+      onPress={onToggle}
+      activeOpacity={0.7}
+    >
+      <Ionicons name="time-outline" size={14} color={isDark ? "#666666" : "#999999"} />
+      <Text style={[styles.earlierHeaderText, isDark && styles.earlierHeaderTextDark]}>{t("sessionsList.earlier")}</Text>
+      <Text style={[styles.earlierHeaderCount, isDark && styles.metaDark]}>{row.count}</Text>
+      <Ionicons
+        name={row.collapsed ? "chevron-forward" : "chevron-down"}
+        size={14}
         color={isDark ? "#666666" : "#999999"}
       />
     </TouchableOpacity>
@@ -197,6 +227,9 @@ export default function SessionsScreen() {
   // Directories collapsed in the grouped session list. Empty by default —
   // all groups start expanded (#67).
   const [collapsedDirs, setCollapsedDirs] = useState<Set<string>>(new Set())
+  // Directories whose "Earlier" (old threads) sub-section is collapsed. Empty
+  // by default — earlier threads start expanded.
+  const [earlierCollapsedDirs, setEarlierCollapsedDirs] = useState<Set<string>>(new Set())
 
   const toggleGroup = useCallback((directory: string) => {
     setCollapsedDirs((prev) => {
@@ -207,29 +240,56 @@ export default function SessionsScreen() {
     })
   }, [])
 
+  const toggleEarlier = useCallback((directory: string) => {
+    setEarlierCollapsedDirs((prev) => {
+      const next = new Set(prev)
+      if (next.has(directory)) next.delete(directory)
+      else next.add(directory)
+      return next
+    })
+  }, [])
+
   // Flatten sessions into header+item rows. Skip headers entirely when
   // everything lives in one directory — a lone header adds noise, not clarity.
+  // Within each group, threads not updated within the recent window tuck under
+  // an "Earlier" sub-header.
   const rows = useMemo<ListRow[]>(() => {
-    const groups = groupByDirectory(sessions)
-    if (groups.length <= 1) {
-      return sessions.map((session) => ({ type: "session", session }))
-    }
-    const out: ListRow[] = []
-    for (const group of groups) {
-      const collapsed = collapsedDirs.has(group.directory)
-      out.push({
-        type: "header",
-        directory: group.directory,
-        shortName: nameOf(group.directory) || group.directory,
-        count: group.items.length,
-        collapsed,
-      })
-      if (!collapsed) {
-        for (const session of group.items) out.push({ type: "session", session })
+    const buildGroup = (group: { directory: string; items: Session[] }, withHeader: boolean): ListRow[] => {
+      const { recent, earlier } = splitByRecentness(group.items)
+      const out: ListRow[] = []
+      if (withHeader) {
+        out.push({
+          type: "header",
+          directory: group.directory,
+          shortName: nameOf(group.directory) || group.directory,
+          count: group.items.length,
+          collapsed: collapsedDirs.has(group.directory),
+        })
       }
+      if (collapsedDirs.has(group.directory)) return out
+      for (const session of recent) out.push({ type: "session", session })
+      if (earlier.length > 0) {
+        const earlierCollapsed = earlierCollapsedDirs.has(group.directory)
+        out.push({
+          type: "earlier-header",
+          directory: group.directory,
+          count: earlier.length,
+          collapsed: earlierCollapsed,
+        })
+        if (!earlierCollapsed) {
+          for (const session of earlier) out.push({ type: "session", session })
+        }
+      }
+      return out
     }
+
+    const groups = groupByDirectory(sessions)
+    if (groups.length === 0) return []
+    if (groups.length === 1) return buildGroup(groups[0], false)
+    const out: ListRow[] = []
+    for (const group of groups) out.push(...buildGroup(group, true))
     return out
-  }, [sessions, collapsedDirs])
+  }, [sessions, collapsedDirs, earlierCollapsedDirs])
 
   // Fetch server-known projects when the new session modal opens
   useEffect(() => {
@@ -550,10 +610,18 @@ export default function SessionsScreen() {
 
       <FlatList
         data={rows}
-        keyExtractor={(row) => (row.type === "header" ? `dir:${row.directory}` : row.session.id)}
+        keyExtractor={(row) =>
+          row.type === "header"
+            ? `dir:${row.directory}`
+            : row.type === "earlier-header"
+              ? `earlier:${row.directory}`
+              : row.session.id
+        }
         renderItem={({ item: row }) =>
           row.type === "header" ? (
             <GroupHeader row={row} isDark={isDark} onToggle={() => toggleGroup(row.directory)} />
+          ) : row.type === "earlier-header" ? (
+            <EarlierHeader row={row} isDark={isDark} onToggle={() => toggleEarlier(row.directory)} />
           ) : (
             <SessionItem
               session={row.session}
@@ -954,6 +1022,33 @@ const styles = StyleSheet.create({
   groupHeaderCount: {
     fontSize: 12,
     color: "#666666",
+  },
+  earlierHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 24,
+    paddingVertical: 8,
+    backgroundColor: "#fafafa",
+    borderBottomWidth: 1,
+    borderBottomColor: "#eeeeee",
+  },
+  earlierHeaderDark: {
+    backgroundColor: "#111111",
+    borderBottomColor: "#1a1a1a",
+  },
+  earlierHeaderText: {
+    flex: 1,
+    fontSize: 13,
+    fontWeight: "500",
+    color: "#737373",
+  },
+  earlierHeaderTextDark: {
+    color: "#9ca3af",
+  },
+  earlierHeaderCount: {
+    fontSize: 12,
+    color: "#a3a3a3",
   },
   sessionItem: {
     flexDirection: "row",

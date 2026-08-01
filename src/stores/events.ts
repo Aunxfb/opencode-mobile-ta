@@ -9,6 +9,7 @@ import { AnalyticsEvent, track } from "../lib/analytics"
 import { recordSuccessfulSession } from "../lib/store-review"
 import { isAuthError } from "../lib/api-error"
 import { isSessionActuallyIdle } from "../lib/session-status-reconcile"
+import { formatError } from "../lib/format-error"
 import type { Client, Part, Session, Message } from "../lib/sdk"
 
 // Session status from the server
@@ -534,19 +535,20 @@ export const useEvents = create<EventsState>((set, get) => ({
             }
 
             case "session.error": {
-              const error = props.error as { message?: string } | undefined
+              const error = props.error as unknown
               const sessionID = props.sessionID as string
               if (!sessionID) break
               updateActivity(sessionID)
               // Mark so the eventual busy -> idle transition is not counted
               // as a success for the store review prompt
               erroredSessions.add(sessionID)
+              const message = formatError(error)
               // Clear sending state unconditionally — SSE is truth
               useSessions.setState((state) => ({
                 sending: { ...state.sending, [sessionID]: false },
                 // Surface error only if user is viewing this session
                 ...(state.currentSession?.id === sessionID
-                  ? { error: error?.message || "Session error occurred" }
+                  ? { error: message || "Session error occurred" }
                   : {}),
               }))
               if (useSessions.getState().currentSession?.id === sessionID) {
@@ -555,7 +557,7 @@ export const useEvents = create<EventsState>((set, get) => ({
               notify({
                 category: "errors",
                 title: "Session error",
-                body: sanitizeBody(error?.message, "Something went wrong"),
+                body: sanitizeBody(message, "Something went wrong"),
                 sessionId: sessionID,
               })
               break

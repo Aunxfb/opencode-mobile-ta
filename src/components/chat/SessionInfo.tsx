@@ -18,6 +18,8 @@ interface Props {
   onClose: () => void
   onRename?: () => void
   onCompact?: () => void
+  onRegenerateTitle?: () => void
+  regeneratingTitle?: boolean
 }
 
 function compact(n: number): string {
@@ -55,6 +57,8 @@ export function SessionInfo({
   onClose,
   onRename,
   onCompact,
+  onRegenerateTitle,
+  regeneratingTitle,
 }: Props) {
   const { t } = useTranslation()
   // Match TUI: last assistant message tokens (context window), cumulative cost
@@ -193,6 +197,20 @@ export function SessionInfo({
           <TouchableOpacity style={[s.action, isDark && s.actionDark]} onPress={onCompact}>
             <Ionicons name="compress-outline" size={14} color={isDark ? "#888888" : "#666666"} />
             <Text style={[s.actionText, isDark && s.dimDark]}>{t("session.actions.compact")}</Text>
+          </TouchableOpacity>
+        )}
+        {onRegenerateTitle && (
+          <TouchableOpacity
+            style={[s.action, isDark && s.actionDark]}
+            onPress={onRegenerateTitle}
+            disabled={regeneratingTitle}
+          >
+            {regeneratingTitle ? (
+              <ActivityIndicator size="small" color={isDark ? "#888888" : "#666666"} />
+            ) : (
+              <Ionicons name="sparkles-outline" size={14} color={isDark ? "#888888" : "#666666"} />
+            )}
+            <Text style={[s.actionText, isDark && s.dimDark]}>{t("session.actions.regenerateTitle")}</Text>
           </TouchableOpacity>
         )}
         {hasMore && (

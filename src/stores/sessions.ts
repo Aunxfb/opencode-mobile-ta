@@ -8,6 +8,8 @@ import { AnalyticsEvent, track } from "../lib/analytics"
 import { extractPromptFromParts, type PromptFromParts } from "../lib/prompt-from-parts"
 import { mergeIncomingMessage } from "../lib/message-merge"
 import { isColdSessionLoad, isLiveEventForSession } from "../lib/session-load-reconcile"
+import { regenerateTitle } from "../lib/regenerate-title"
+import { formatError } from "../lib/format-error"
 
 // Helper to convert API response to our internal format
 function parseMessages(response: MessageWithParts[]): { messages: Message[]; parts: Record<string, Part[]> } {
@@ -62,6 +64,9 @@ interface SessionsState {
   forkSession: (messageID?: string) => Promise<Session | null>
   renameSession: (title: string) => Promise<void>
   summarizeSession: () => Promise<boolean>
+  regenerateSessionTitle: () => Promise<string | null>
+  retrySession: () => Promise<RevertResult>
+  clearError: () => void
 
   // Revert (edit sent message) / unrevert (undo the pending revert)
   revertToMessage: (messageID: string) => Promise<RevertResult>
@@ -316,6 +321,33 @@ export const useSessions = create<SessionsState>((set, get) => ({
     }
   },
 
+  regenerateSessionTitle: async () => {
+    const client = clientFor(get().currentSession?.directory)
+    const session = get().currentSession
+    if (!client || !session) {
+      set({ error: "No active session" })
+      return null
+    }
+
+    try {
+      const title = await regenerateTitle(client, session.id, get().messages, get().parts)
+      if (!title) {
+        set({ error: "Failed to regenerate title" })
+        return null
+      }
+      const updated = await client.session.update(session.id, { title })
+      set((state) => ({
+        sessions: state.sessions.map((s) => (s.id === session.id ? updated : s)),
+        currentSession: state.currentSession?.id === session.id ? updated : state.currentSession,
+      }))
+      return title
+    } catch (err) {
+      console.error("Failed to regenerate title:", err)
+      set({ error: "Failed to regenerate title" })
+      return null
+    }
+  },
+
   sendMessage: async (text, model, agent, files, variant) => {
     const client = clientFor(get().currentSession?.directory)
     const session = get().currentSession
@@ -388,7 +420,7 @@ export const useSessions = create<SessionsState>((set, get) => ({
       console.error("[sendMessage] error:", err)
       const stillCurrent = get().currentSession?.id === session.id
       set((state) => ({
-        ...(stillCurrent ? { error: String(err) } : {}),
+        ...(stillCurrent ? { error: formatError(err) } : {}),
         sending: { ...state.sending, [session.id]: false },
       }))
       if (stillCurrent) get().refreshMessages()
@@ -469,6 +501,38 @@ export const useSessions = create<SessionsState>((set, get) => ({
     } catch {
       return { ok: false, reason: "error" }
     }
+  },
+
+  // Re-run the last prompt after a failed/stalled run: regenerate the last
+  // assistant message (reverts to its user prompt and resends) or, if there
+  // is none, revert to the last user message and resend it directly.
+  retrySession: async () => {
+    const { messages } = get()
+    if (!get().currentSession) return { ok: false, reason: "error" }
+
+    const lastAssistant = [...messages].reverse().find((m) => m.role === "assistant")
+    if (lastAssistant) return get().regenerateMessage(lastAssistant.id)
+
+    const lastUser = [...messages].reverse().find((m) => m.role === "user")
+    if (!lastUser) return { ok: false, reason: "error" }
+
+    const result = await get().revertToMessage(lastUser.id)
+    if (!result.ok) return result
+
+    const files = result.files
+      .filter((f): f is (typeof f & { url: string; mime: string }) => !!f.url && !!f.mime)
+      .map((f) => ({ uri: f.url, mime: f.mime, filename: f.filename }))
+
+    try {
+      await get().sendMessage(result.text, lastUser.model, lastUser.agent, files)
+      return { ok: true, text: result.text, files: result.files }
+    } catch {
+      return { ok: false, reason: "error" }
+    }
+  },
+
+  clearError: () => {
+    set({ error: null })
   },
 
   // Marks messageID (and everything after it) as pending revert, so the

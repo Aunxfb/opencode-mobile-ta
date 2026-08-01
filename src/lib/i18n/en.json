@@ -100,7 +100,13 @@
       "fork": "Fork from here",
       "rename": "Rename",
       "compact": "Compact",
+      "regenerateTitle": "Regenerate title",
       "replace": "Replace"
+    },
+    "errors": {
+      "title": "Something went wrong",
+      "retry": "Try again",
+      "dismiss": "Dismiss"
     },
     "alerts": {
       "messageActionsTitle": "Message actions",
@@ -131,7 +137,15 @@
       "speechErrorTitle": "Voice input failed",
       "speechErrorMessage": "Could not use voice input. Check your microphone permission and try again.",
       "compactStartedTitle": "Summarization started",
-      "compactStartedMessage": "The session is being compacted. This may take a moment."
+      "compactStartedMessage": "The session is being compacted. This may take a moment.",
+      "titleRegenerateConfirmTitle": "Regenerate title?",
+      "titleRegenerateConfirmMessage": "This runs a short AI request on your server to summarize the conversation. It creates a temporary session that is deleted immediately after — you may see it in the server log, and it will count toward API billing. Continue?",
+      "titleRegenerateSuccessTitle": "Title updated",
+      "titleRegenerateSuccessMessage": "New title: {{title}}",
+      "titleRegenerateFailedTitle": "Could not regenerate title",
+      "titleRegenerateFailedMessage": "The title could not be generated. Check your server connection and try again.",
+      "retryFailedTitle": "Retry failed",
+      "retryFailedMessage": "Could not retry. Check your server connection and try again."
     }
   },
   "connection": {
@@ -250,6 +264,7 @@
   },
   "sessionsList": {
     "untitledSession": "Untitled Session",
+    "earlier": "Earlier",
     "time": {
       "justNow": "Just now",
       "minutesAgo": "{{count}}m ago",

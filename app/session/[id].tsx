@@ -32,6 +32,7 @@ import {
   VariantPicker,
   ImageAttachments,
   SessionInfo,
+  ErrorBanner,
   type SlashCommand,
   type Attachment,
 } from "../../src/components/chat"
@@ -111,10 +112,15 @@ export default function SessionScreen() {
     forkSession,
     renameSession,
     summarizeSession,
+    regenerateSessionTitle,
+    error,
+    retrySession,
+    clearError,
   } = useSessions()
 
   // Derive sending state for this specific session
   const isSending = useSessions((s) => !!(currentSession && s.sending[currentSession.id]))
+  const [retrying, setRetrying] = useState(false)
 
   const { authenticateForMessage } = useAuth()
   const { client, clientForDirectory } = useConnections()
@@ -144,6 +150,7 @@ export default function SessionScreen() {
 
   const shortDir = getShortDir(currentSession?.directory)
   const [showScrollButton, setShowScrollButton] = useState(false)
+  const [regeneratingTitle, setRegeneratingTitle] = useState(false)
 
   // Keyboard height drives the composer's bottom padding explicitly. The
   // previous KeyboardAvoidingView behavior="padding" relied on its own
@@ -358,6 +365,55 @@ export default function SessionScreen() {
       Alert.alert(t("session.alerts.compactStartedTitle"), t("session.alerts.compactStartedMessage"))
     }
   }, [summarizeSession, t])
+
+  const handleRegenerateTitle = useCallback(() => {
+    if (regeneratingTitle) return
+    Alert.alert(
+      t("session.alerts.titleRegenerateConfirmTitle"),
+      t("session.alerts.titleRegenerateConfirmMessage"),
+      [
+        { text: t("common.cancel"), style: "cancel" },
+        {
+          text: t("session.actions.regenerateTitle"),
+          onPress: async () => {
+            setRegeneratingTitle(true)
+            try {
+              const title = await regenerateSessionTitle()
+              if (title) {
+                Alert.alert(
+                  t("session.alerts.titleRegenerateSuccessTitle"),
+                  t("session.alerts.titleRegenerateSuccessMessage", { title }),
+                )
+              } else {
+                Alert.alert(t("session.alerts.titleRegenerateFailedTitle"), t("session.alerts.titleRegenerateFailedMessage"))
+              }
+            } finally {
+              setRegeneratingTitle(false)
+            }
+          },
+        },
+      ],
+    )
+  }, [regeneratingTitle, regenerateSessionTitle, t])
+
+  // Retry the last prompt after a failed/stalled run. sendMessage clears the
+  // error synchronously on success, so the banner disappears as soon as the
+  // retry is submitted; on failure the error is set again and the banner stays.
+  const handleRetry = useCallback(() => {
+    if (retrying) return
+    setRetrying(true)
+    retrySession()
+      .then((result) => {
+        if (!result.ok) {
+          Alert.alert(t("session.alerts.retryFailedTitle"), t("session.alerts.retryFailedMessage"))
+        }
+      })
+      .finally(() => setRetrying(false))
+  }, [retrying, retrySession, t])
+
+  const handleDismissError = useCallback(() => {
+    clearError()
+  }, [clearError])
 
   const scrollToBottom = useCallback((animated = true) => {
     flatListRef.current?.scrollToOffset({ offset: 0, animated })
@@ -727,6 +783,8 @@ export default function SessionScreen() {
           onClose={() => setShowInfo(false)}
           onRename={handleRename}
           onCompact={handleCompact}
+          onRegenerateTitle={handleRegenerateTitle}
+          regeneratingTitle={regeneratingTitle}
         />
 
         {/* SSE reconnect/connected banner */}
@@ -816,6 +874,14 @@ export default function SessionScreen() {
         )}
 
         {/* Status */}
+        {currentSession && error && (
+          <ErrorBanner
+            message={error}
+            isDark={isDark}
+            onRetry={handleRetry}
+            onDismiss={handleDismissError}
+          />
+        )}
         {currentSession && <StatusIndicator sessionID={currentSession.id} isDark={isDark} />}
 
         {/* Permissions */}

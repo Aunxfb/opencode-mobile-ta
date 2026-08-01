@@ -100,7 +100,13 @@
       "fork": "从此处分叉",
       "rename": "重命名",
       "compact": "压缩",
+      "regenerateTitle": "重新生成标题",
       "replace": "替换"
+    },
+    "errors": {
+      "title": "出了点问题",
+      "retry": "重试",
+      "dismiss": "关闭"
     },
     "alerts": {
       "messageActionsTitle": "消息操作",
@@ -131,7 +137,15 @@
       "speechErrorTitle": "语音输入失败",
       "speechErrorMessage": "无法使用语音输入。请检查麦克风权限后重试。",
       "compactStartedTitle": "压缩已开始",
-      "compactStartedMessage": "会话正在压缩中。这可能需要一些时间。"
+      "compactStartedMessage": "会话正在压缩中。这可能需要一些时间。",
+      "titleRegenerateConfirmTitle": "重新生成标题？",
+      "titleRegenerateConfirmMessage": "此操作会在您的服务器上发起一次简短的 AI 请求来总结对话。它会创建一个临时会话，完成后立即删除 — 该请求会出现在服务器日志中，并计入 API 费用。是否继续？",
+      "titleRegenerateSuccessTitle": "标题已更新",
+      "titleRegenerateSuccessMessage": "新标题：{{title}}",
+      "titleRegenerateFailedTitle": "无法重新生成标题",
+      "titleRegenerateFailedMessage": "无法生成标题。请检查服务器连接后重试。",
+      "retryFailedTitle": "重试失败",
+      "retryFailedMessage": "无法重试。请检查服务器连接后重试。"
     }
   },
   "connection": {
@@ -250,6 +264,7 @@
   },
   "sessionsList": {
     "untitledSession": "未命名会话",
+    "earlier": "更早",
     "time": {
       "justNow": "刚刚",
       "minutesAgo": "{{count}} 分钟前",

@@ -29,3 +29,32 @@ export function groupByDirectory<T extends { directory: string }>(items: T[]): D
 
   return order.map((directory) => ({ directory, items: buckets.get(directory) as T[] }))
 }
+
+/** Sessions not updated within this window are considered "old" threads. */
+export const DEFAULT_EARLIER_CUTOFF_MS = 30 * 24 * 60 * 60 * 1000
+
+export interface Recentness<T> {
+  recent: T[]
+  earlier: T[]
+}
+
+/**
+ * Splits items into `recent` (updated within `cutoffMs` of now) and `earlier`
+ * (older), preserving item order within each bucket. Items without a usable
+ * `time.updated` are treated as older.
+ */
+export function splitByRecentness<T extends { time?: { updated?: number } }>(
+  items: T[],
+  cutoffMs: number = DEFAULT_EARLIER_CUTOFF_MS,
+): Recentness<T> {
+  const now = Date.now()
+  const recent: T[] = []
+  const earlier: T[] = []
+
+  for (const item of items) {
+    const updated = typeof item.time?.updated === "number" ? item.time.updated : 0
+    ;(updated >= now - cutoffMs ? recent : earlier).push(item)
+  }
+
+  return { recent, earlier }
+}
