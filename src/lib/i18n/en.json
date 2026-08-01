@@ -11,6 +11,7 @@
   "settings": {
     "sections": {
       "security": "Security",
+      "sessions": "Sessions",
       "notifications": "Notifications",
       "privacy": "Privacy",
       "about": "About"
@@ -28,6 +29,13 @@
       "lockNow": {
         "label": "Lock App Now",
         "description": "Require authentication to reopen"
+      }
+    },
+    "sessions": {
+      "earlierThreshold": {
+        "label": "Collapse old threads after",
+        "description": "Threads not updated within this many days tuck under \"Earlier\".",
+        "value": "{{days}} days"
       }
     },
     "notifications": {

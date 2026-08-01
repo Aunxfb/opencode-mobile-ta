@@ -23,6 +23,7 @@ import { useSessions } from "../../src/stores/sessions"
 import { useConnections } from "../../src/stores/connections"
 import { useEvents } from "../../src/stores/events"
 import { useCatalog } from "../../src/stores/catalog"
+import { useSettings } from "../../src/stores/settings"
 import type BottomSheet from "@gorhom/bottom-sheet"
 import type { Session, Project } from "../../src/lib/sdk"
 import { DirectorySwitcher, DirectoryBrowserSheet } from "../../src/components/chat"
@@ -190,6 +191,7 @@ export default function SessionsScreen() {
   const colorScheme = useColorScheme()
   const isDark = colorScheme === "dark"
   const { t } = useTranslation()
+  const { recentDays } = useSettings()
   const [showNewSession, setShowNewSession] = useState(false)
   const [customDir, setCustomDir] = useState("")
   const [isCreating, setIsCreating] = useState(false)
@@ -254,8 +256,9 @@ export default function SessionsScreen() {
   // Within each group, threads not updated within the recent window tuck under
   // an "Earlier" sub-header.
   const rows = useMemo<ListRow[]>(() => {
+    const cutoffMs = recentDays * 24 * 60 * 60 * 1000
     const buildGroup = (group: { directory: string; items: Session[] }, withHeader: boolean): ListRow[] => {
-      const { recent, earlier } = splitByRecentness(group.items)
+      const { recent, earlier } = splitByRecentness(group.items, cutoffMs)
       const out: ListRow[] = []
       if (withHeader) {
         out.push({
@@ -289,7 +292,7 @@ export default function SessionsScreen() {
     const out: ListRow[] = []
     for (const group of groups) out.push(...buildGroup(group, true))
     return out
-  }, [sessions, collapsedDirs, earlierCollapsedDirs])
+  }, [sessions, collapsedDirs, earlierCollapsedDirs, recentDays])
 
   // Fetch server-known projects when the new session modal opens
   useEffect(() => {

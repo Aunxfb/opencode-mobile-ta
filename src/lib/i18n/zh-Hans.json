@@ -11,6 +11,7 @@
   "settings": {
     "sections": {
       "security": "安全",
+      "sessions": "会话",
       "notifications": "通知",
       "privacy": "隐私",
       "about": "关于"
@@ -28,6 +29,13 @@
       "lockNow": {
         "label": "立即锁定应用",
         "description": "重新打开时需要验证身份"
+      }
+    },
+    "sessions": {
+      "earlierThreshold": {
+        "label": "旧会话折叠阈值",
+        "description": "超过该天数未更新的会话会折叠到“更早”分组下。",
+        "value": "{{days}} 天"
       }
     },
     "notifications": {

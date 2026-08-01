@@ -1,7 +1,7 @@
 import { create } from "zustand"
 import * as SecureStore from "expo-secure-store"
 import { type Category, defaultPreferences } from "../lib/notifications"
-import { clampPageSize, mergeStoredSettings } from "../lib/settings-merge"
+import { clampPageSize, clampRecentDays, mergeStoredSettings } from "../lib/settings-merge"
 import { setAppLocale } from "../lib/i18n/config"
 import type { LocalePreference } from "../lib/i18n/locale-resolve"
 
@@ -11,12 +11,15 @@ interface Settings {
   pageSize: number
   notifications: Record<Category, boolean>
   locale: LocalePreference
+  // Sessions list: threads not updated within this many days tuck under "Earlier".
+  recentDays: number
 }
 
 const DEFAULTS: Settings = {
   pageSize: 25,
   notifications: { ...defaultPreferences },
   locale: "system",
+  recentDays: 30,
 }
 
 interface SettingsState extends Settings {
@@ -25,10 +28,16 @@ interface SettingsState extends Settings {
   setPageSize: (size: number) => Promise<void>
   setNotification: (category: Category, enabled: boolean) => Promise<void>
   setLocale: (locale: LocalePreference) => Promise<void>
+  setRecentDays: (days: number) => Promise<void>
 }
 
 function snapshot(get: () => SettingsState): Settings {
-  return { pageSize: get().pageSize, notifications: get().notifications, locale: get().locale }
+  return {
+    pageSize: get().pageSize,
+    notifications: get().notifications,
+    locale: get().locale,
+    recentDays: get().recentDays,
+  }
 }
 
 async function persist(settings: Settings) {
@@ -68,5 +77,11 @@ export const useSettings = create<SettingsState>((set, get) => ({
     set({ locale })
     setAppLocale(locale) // applies immediately
     await persist({ ...snapshot(get), locale })
+  },
+
+  setRecentDays: async (days) => {
+    const clamped = clampRecentDays(days)
+    set({ recentDays: clamped })
+    await persist({ ...snapshot(get), recentDays: clamped })
   },
 }))

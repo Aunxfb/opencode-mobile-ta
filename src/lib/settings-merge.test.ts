@@ -1,6 +1,6 @@
 import { test } from "node:test"
 import assert from "node:assert/strict"
-import { clampPageSize, mergeStoredSettings } from "./settings-merge.ts"
+import { clampPageSize, clampRecentDays, mergeStoredSettings } from "./settings-merge.ts"
 
 const DEFAULTS = {
   pageSize: 25,
@@ -19,6 +19,20 @@ test("clampPageSize floors below 10 and caps above 200", () => {
   assert.equal(clampPageSize(9), 10)
   assert.equal(clampPageSize(201), 200)
   assert.equal(clampPageSize(99999), 200)
+})
+
+test("clampRecentDays keeps in-range values unchanged", () => {
+  assert.equal(clampRecentDays(30), 30)
+  assert.equal(clampRecentDays(1), 1)
+  assert.equal(clampRecentDays(365), 365)
+})
+
+test("clampRecentDays rounds and clamps to 1..365", () => {
+  assert.equal(clampRecentDays(0), 1)
+  assert.equal(clampRecentDays(-10), 1)
+  assert.equal(clampRecentDays(7.4), 7)
+  assert.equal(clampRecentDays(366), 365)
+  assert.equal(clampRecentDays(9999), 365)
 })
 
 test("empty stored settings yield the defaults", () => {

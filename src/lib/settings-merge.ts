@@ -7,6 +7,11 @@ export function clampPageSize(size: number): number {
   return Math.max(10, Math.min(200, size))
 }
 
+/** Clamp the "collapse old threads" cutoff (in days) to a sane range. */
+export function clampRecentDays(days: number): number {
+  return Math.max(1, Math.min(365, Math.round(days)))
+}
+
 /**
  * Merge stored settings over defaults. Stored values win, but any top-level field
  * or notification category missing from storage falls back to its default — so a

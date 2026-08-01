@@ -75,7 +75,7 @@ export default function SettingsScreen() {
   const { t } = useTranslation()
 
   const { settings, hasBiometrics, updateSettings, lock } = useAuth()
-  const { notifications, setNotification, locale, setLocale } = useSettings()
+  const { notifications, setNotification, locale, setLocale, recentDays, setRecentDays } = useSettings()
   const [osGranted, setOsGranted] = useState<boolean | null>(null)
   const [telemetryUpdating, setTelemetryUpdating] = useState(false)
 
@@ -137,6 +137,14 @@ export default function SettingsScreen() {
     ])
   }, [t, setLocale, localeLabels])
 
+  // "Collapse old threads after" — step by a week, clamped to 1..365 days.
+  const stepRecentDays = useCallback(
+    (dir: 1 | -1) => {
+      setRecentDays(recentDays + dir * 7)
+    },
+    [recentDays, setRecentDays],
+  )
+
   return (
     <ScrollView style={[styles.container, isDark && styles.containerDark]} contentContainerStyle={styles.content}>
       <SettingSection title={t("settings.sections.security")} isDark={isDark}>
@@ -182,6 +190,38 @@ export default function SettingsScreen() {
             right={<Ionicons name="chevron-forward" size={20} color={isDark ? "#666666" : "#999999"} />}
           />
         )}
+      </SettingSection>
+
+      <SettingSection title={t("settings.sections.sessions")} isDark={isDark}>
+        <SettingRow
+          icon="time-outline"
+          label={t("settings.sessions.earlierThreshold.label")}
+          description={t("settings.sessions.earlierThreshold.description")}
+          isDark={isDark}
+          right={
+            <View style={styles.stepper}>
+              <TouchableOpacity
+                style={[styles.stepperBtn, isDark && styles.stepperBtnDark]}
+                onPress={() => stepRecentDays(-1)}
+                disabled={recentDays <= 1}
+                hitSlop={6}
+              >
+                <Ionicons name="remove" size={18} color={isDark ? "#ffffff" : "#0a0a0a"} />
+              </TouchableOpacity>
+              <Text style={[styles.stepperValue, isDark && styles.textDark]}>
+                {t("settings.sessions.earlierThreshold.value", { days: recentDays })}
+              </Text>
+              <TouchableOpacity
+                style={[styles.stepperBtn, isDark && styles.stepperBtnDark]}
+                onPress={() => stepRecentDays(1)}
+                disabled={recentDays >= 365}
+                hitSlop={6}
+              >
+                <Ionicons name="add" size={18} color={isDark ? "#ffffff" : "#0a0a0a"} />
+              </TouchableOpacity>
+            </View>
+          }
+        />
       </SettingSection>
 
       <SettingSection title={t("settings.sections.notifications")} isDark={isDark}>
@@ -349,6 +389,29 @@ const styles = StyleSheet.create({
   },
   metaDark: {
     color: "#888888",
+  },
+  stepper: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+  },
+  stepperBtn: {
+    width: 30,
+    height: 30,
+    borderRadius: 6,
+    backgroundColor: "#f5f5f5",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  stepperBtnDark: {
+    backgroundColor: "#2a2a2a",
+  },
+  stepperValue: {
+    minWidth: 64,
+    textAlign: "center",
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#0a0a0a",
   },
   footer: {
     alignItems: "center",
