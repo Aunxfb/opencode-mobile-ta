@@ -221,3 +221,27 @@ dependencies {
         implementation jscFlavor
     }
 }
+
+// Also emit `app-release-opencode.apk` alongside the default `app-release.apk`
+// in build/outputs/apk/release so release builds keep both artifact names. The
+// original `app-release.apk` is untouched — its CI/F-Droid/Play consumers all
+// reference that exact path.
+tasks.register("copyReleaseApk") {
+    dependsOn "packageRelease"
+    doLast {
+        def releaseDir = file("$buildDir/outputs/apk/release")
+        def apk = file("$releaseDir/app-release.apk")
+        if (apk.exists()) {
+            copy {
+                from apk
+                into releaseDir
+                rename { "app-release-opencode.apk" }
+            }
+        }
+    }
+}
+tasks.configureEach { task ->
+    if (task.name == "assembleRelease") {
+        task.dependsOn "copyReleaseApk"
+    }
+}
