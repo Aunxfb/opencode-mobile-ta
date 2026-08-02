@@ -2,7 +2,6 @@ import { useEffect, useRef, useState, useCallback, useMemo } from "react"
 import {
   View,
   Text,
-  FlatList,
   TextInput,
   TouchableOpacity,
   StyleSheet,
@@ -13,6 +12,7 @@ import {
   Alert,
   Modal,
 } from "react-native"
+import { FlashList } from "@shopify/flash-list"
 import { useLocalSearchParams, Stack, useRouter, useFocusEffect } from "expo-router"
 import { Ionicons } from "@expo/vector-icons"
 import { useSafeAreaInsets } from "react-native-safe-area-context"
@@ -42,6 +42,7 @@ import { useConnections } from "../../src/stores/connections"
 import { useAuth } from "../../src/stores/auth"
 import { useCatalog } from "../../src/stores/catalog"
 import { useSpeech } from "../../src/lib/speech"
+import type { Message, Part } from "../../src/lib/sdk"
 
 // --- Builtin slash commands ---
 const BUILTIN_COMMANDS: SlashCommand[] = [
@@ -82,7 +83,7 @@ export default function SessionScreen() {
   const insets = useSafeAreaInsets()
   const { t } = useTranslation()
 
-  const flatListRef = useRef<FlatList>(null)
+  const flatListRef = useRef<FlashList<{ message: Message; parts: Part[] }>>(null)
   const modelSheetRef = useRef<BottomSheet>(null)
   const variantSheetRef = useRef<BottomSheet>(null)
   const actionSheetRef = useRef<BottomSheet>(null)
@@ -215,7 +216,7 @@ export default function SessionScreen() {
   // message sent concurrently with a revert isn't hidden.
   const revertMessageID = currentSession?.revert?.messageID
 
-  // Inverted FlatList: data is reversed (newest first) so newest renders at bottom
+  // Inverted FlashList: data is reversed (newest first) so newest renders at bottom
   const messageData = useMemo(
     () =>
       (messages || [])
@@ -826,10 +827,11 @@ export default function SessionScreen() {
           </View>
         ) : (
           <View style={s.listWrap}>
-            <FlatList
+            <FlashList
               ref={flatListRef}
               data={messageData}
               inverted
+              estimatedItemSize={120}
               keyboardShouldPersistTaps="handled"
               keyExtractor={(item) => item.message.id}
               renderItem={({ item }) => (
@@ -845,8 +847,6 @@ export default function SessionScreen() {
               scrollEventThrottle={100}
               onEndReached={handleLoadMore}
               onEndReachedThreshold={0.5}
-              // Prevent jump when older messages are prepended
-              maintainVisibleContentPosition={{ minIndexForVisible: 0 }}
               ListFooterComponent={
                 loadingMore ? (
                   <View style={s.loadingMore}>
