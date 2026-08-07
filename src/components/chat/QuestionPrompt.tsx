@@ -1,5 +1,5 @@
 import { useRef, useState } from "react"
-import { View, Text, TextInput, TouchableOpacity, StyleSheet } from "react-native"
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, ScrollView } from "react-native"
 import { Ionicons } from "@expo/vector-icons"
 import { useTranslation } from "react-i18next"
 
@@ -88,7 +88,16 @@ export function QuestionPrompt({ request, isDark, onReply, onReject }: Props) {
       </View>
       <Text style={[s.question, isDark && s.textWhite]}>{q.question}</Text>
 
-      <View style={s.options}>
+      {/* A question can carry many options; cap the list's height and let the
+          user browse them by scrolling instead of overflowing the chat screen
+          and pushing the composer (and the later options) off-screen. */}
+      <ScrollView
+        style={s.optionsScroll}
+        contentContainerStyle={s.options}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+        nestedScrollEnabled
+      >
         {q.options.map((opt) => {
           const selected = (answers[current] || []).includes(opt.label)
           return (
@@ -129,7 +138,7 @@ export function QuestionPrompt({ request, isDark, onReply, onReject }: Props) {
               <Text style={[s.optionLabel, { color: "#8b5cf6" }]}>{t("chat.questionPrompt.customAnswerLabel")}</Text>
             </TouchableOpacity>
           ))}
-      </View>
+      </ScrollView>
 
       <View style={s.footer}>
         <TouchableOpacity onPress={reject}>
@@ -172,6 +181,7 @@ const s = StyleSheet.create({
   question: { fontSize: 14, lineHeight: 20, color: "#0a0a0a", marginBottom: 12 },
   metaDark: { color: "#666666" },
 
+  optionsScroll: { maxHeight: 280 },
   options: { gap: 8 },
   option: {
     padding: 12,
