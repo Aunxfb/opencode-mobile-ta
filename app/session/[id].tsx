@@ -11,6 +11,7 @@ import {
   ActivityIndicator,
   Alert,
   Modal,
+  AppState,
 } from "react-native"
 import { FlashList } from "@shopify/flash-list"
 import { useLocalSearchParams, Stack, useRouter, useFocusEffect } from "expo-router"
@@ -117,6 +118,7 @@ export default function SessionScreen() {
     error,
     retrySession,
     clearError,
+    refreshMessages,
   } = useSessions()
 
   // Derive sending state for this specific session
@@ -439,6 +441,24 @@ export default function SessionScreen() {
       })
     }, [id, directory]),
   )
+
+  // Catch up on content rendered while the app was backgrounded. The SSE
+  // stream resumes from "now" on reconnect — it doesn't replay events missed
+  // while the app was suspended — so returning to the foreground could leave a
+  // stale conversation (a reply that streamed/completed while away is missing)
+  // until the user backed out and re-entered. Re-fetch the session's messages
+  // and pending prompts on "active", mirroring what re-entry does.
+  useEffect(() => {
+    const sub = AppState.addEventListener("change", (next) => {
+      if (next !== "active" || !id) return
+      const connState = useConnections.getState()
+      const c = directory ? (connState.clientForDirectory(directory) ?? connState.client) : connState.client
+      if (!c) return
+      refreshMessages()
+      refreshPending(c, id)
+    })
+    return () => sub.remove()
+  }, [id, directory, refreshMessages])
 
   // Sync model chip from latest assistant message
   useEffect(() => {
